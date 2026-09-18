@@ -36,7 +36,7 @@ godot-framework/
 ├── project.godot                  # Our test project's Godot config
 ├── src/
 │   └── GameFramework/             # LIBRARY CODE (8 .cs files, namespace GameFramework)
-│       ├── GameFramework.cs
+│       ├── Game.cs                  # The autoload class (note: NOT GameFramework.cs; see below)
 │       ├── ServiceRegistry.cs
 │       ├── GameService.cs
 │       ├── UIManager.cs
@@ -147,16 +147,23 @@ UIManager="*res://addons/godot-framework/src/GameFramework/UIManager.cs"
 You only need `UIManager` if you actually use the UI panel stack — drop the
 line if you're only using `ServiceRegistry`. Order matters: `GameFramework`
 must be listed before `UIManager` (UIManager is a `GameService` that
-auto-registers with `GameFramework.Instance.Services`).
+auto-registers with `Game.Instance.Services`).
+
+> **Class naming note:** the autoload class is named `Game` (not
+> `GameFramework`) because the C# namespace and class cannot share a name
+> without causing `CS0234` ("X does not exist in namespace X") errors
+> for consumers. The autoload NODE name in `project.godot` is still
+> `GameFramework` — that's just an identifier inside Godot, not a C#
+> identifier. So: autoload name `GameFramework`, class `Game`.
 
 ### Step 4: Use it
 
 ```csharp
 // Register a POCO service once at game boot:
-GameFramework.Instance.Services.Register(new AudioService());
+Game.Instance.Services.Register(new AudioService());
 
 // Resolve from anywhere — Node-based or POCO:
-var audio = GameFramework.Instance.Services.Resolve<AudioService>();
+var audio = Game.Instance.Services.Resolve<AudioService>();
 
 // Push a typed panel and await its result:
 var choice = await UIManager.Instance.PushAsync<ConfirmDialog, string, bool>(

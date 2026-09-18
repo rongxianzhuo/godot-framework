@@ -102,18 +102,21 @@
 
 ## 3. 关键 API
 
-### 3.1 `GameFramework`（autoload）
+### 3.1 `Game`（autoload 类，autoload Node 名为 "GameFramework"）
 
 ```csharp
-public partial class GameFramework : Node
+// 注：class 名为 Game（不是 GameFramework），避免 namespace + class 同名歧义
+// （C# 解析规则：成员访问时 namespace 优先于同名 type）
+public partial class Game : Node
 {
-    public static GameFramework Instance { get; private set; }
+    public static Game Instance { get; private set; }
     public ServiceRegistry Services { get; } = new();
 }
 
-public class ServiceRegistry
+public sealed class ServiceRegistry
 {
     public void Register<T>(T service) where T : class;
+    public void Register(Type key, object service);  // 显式 type key（base class 用 this.GetType() 注册）
     public T? TryGet<T>() where T : class;
     public T Resolve<T>() where T : class;  // throws if missing
     public bool Unregister<T>() where T : class;
@@ -121,8 +124,8 @@ public class ServiceRegistry
 
 public abstract partial class GameService : Node  // 自动注册基类
 {
-    // _Ready → Services.Register(this)
-    // _ExitTree → Services.Unregister(GetType())
+    // _Ready → Services.Register(this.GetType(), this)  // 注册成派生类型，不是 GameService
+    // _ExitTree → Services.UnregisterAllFromNode(this)
 }
 ```
 
@@ -369,6 +372,9 @@ godot --headless --quit-after 300
 6. **autoload 顺序**：先 `GameFramework` 再 `UIManager`（UIManager 是 GameService，注册到 GameFramework）。
 7. **`res://` 不允许 `..` 跳出项目根** — Godot 4 安全限制。所以 sample 不能独立成有 project.godot 的子工程；选择保留 sample 在根项目下用 res:// 路径访问。
 8. **MSBuild 默认 Compile glob 会把整个项目树都包含** — csproj 必须显式 `<Compile Remove>` 不该编译的文件夹。
+9. **C# namespace 和 class 同名导致 CS0234** — `GameFramework` 同时是 namespace 和 class 时，`GameFramework.Instance` 解析为 namespace 的成员查找，CS0234 "Instance does not exist in namespace GameFramework"。修：class 改名为 `Game`（autoload Node 名仍叫 "GameFramework"，只是 C# class 改名）。
+10. **base class `_Ready` 不会自动 chain** — Godot 4 C# 只调最派生类的 `_Ready`。`UIManager._Ready` 必须显式 `base._Ready()` 让 `GameService._Ready`（注册）能跑。
+11. **`Register<T>(this)` 在 base class 中注册成 base type** — `typeof(T)` 是静态类型 `GameService`，不是派生类型 `UIManager`，导致 `Resolve<UIManager>()` 找不到。修：用 `Register(this.GetType(), this)` 显式注册成运行时类型。
 
 **演示场景验证的能力**：
 
