@@ -32,6 +32,7 @@ public partial class UIManager : GameService
 
     public override void _Ready()
     {
+        base._Ready(); // GameService auto-registers with Game.Instance.Services
         Instance = this;
         ProcessMode = ProcessModeEnum.Always;
 
