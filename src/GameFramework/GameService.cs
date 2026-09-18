@@ -15,7 +15,6 @@ public abstract partial class GameService : Node
 {
     public override void _Ready()
     {
-        GD.Print($"[GameService] _Ready called on {GetType().Name}; Game.Instance null? {Game.Instance == null}");
         if (Game.Instance == null)
         {
             // Defensive: if the GameService node was added to the tree before Game's
@@ -23,7 +22,10 @@ public abstract partial class GameService : Node
             CallDeferred(MethodName.RegisterSelfDeferred);
             return;
         }
-        Game.Instance.Services.Register(this);
+        // Register under the runtime type (the most-derived class), not under
+        // GameService — otherwise consumers asking for typeof(UIManager) would
+        // never find it (Register<T>(this) would store it under typeof(GameService)).
+        Game.Instance.Services.Register(this.GetType(), this);
     }
 
     public override void _ExitTree()
@@ -35,6 +37,6 @@ public abstract partial class GameService : Node
     private void RegisterSelfDeferred()
     {
         if (Game.Instance != null)
-            Game.Instance.Services.Register(this);
+            Game.Instance.Services.Register(this.GetType(), this);
     }
 }

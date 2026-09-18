@@ -20,12 +20,23 @@ public sealed class ServiceRegistry
     public void Register<T>(T service) where T : class
     {
         if (service == null) throw new ArgumentNullException(nameof(service));
-        var t = typeof(T);
-        if (_services.TryGetValue(t, out var existing) && !ReferenceEquals(existing, service))
+        Register(typeof(T), service);
+    }
+
+    /// <summary>
+    /// Registers a service under an EXPLICIT type key (not necessarily its static
+    /// type). Useful for derived-class registration from a base-class method, where
+    /// <c>Register&lt;T&gt;(this)</c> would lock in <c>T</c> as the base type.
+    /// </summary>
+    public void Register(Type key, object service)
+    {
+        if (key == null) throw new ArgumentNullException(nameof(key));
+        if (service == null) throw new ArgumentNullException(nameof(service));
+        if (_services.TryGetValue(key, out var existing) && !ReferenceEquals(existing, service))
         {
-            GD.PrintErr($"[GameFramework] Service {t.Name} re-registered (previous instance replaced).");
+            GD.PrintErr($"[GameFramework] Service {key.Name} re-registered (previous instance replaced).");
         }
-        _services[t] = service;
+        _services[key] = service;
 
         // Track Node-based service ownership for cleanup.
         if (service is Node node)
@@ -35,7 +46,7 @@ public sealed class ServiceRegistry
                 types = new List<Type>();
                 _nodeOwnership[node] = types;
             }
-            if (!types.Contains(t)) types.Add(t);
+            if (!types.Contains(key)) types.Add(key);
         }
     }
 
