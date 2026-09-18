@@ -15,7 +15,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-GameFramework="*res://src/GameFramework/GameFramework.cs"
+GameFramework="*res://src/GameFramework/Game.cs"
 UIManager="*res://src/GameFramework/UIManager.cs"
 
 [dotnet]

@@ -66,7 +66,7 @@ public sealed partial class SettingsPanel : UIPanel<float>
     {
         var v = (float)value;
         _volumeLabel.Text = $"Music Volume: {v:F2}";
-        var audio = GameFramework.Instance.Services.TryGet<AudioService>();
+        var audio = Game.Instance.Services.TryGet<AudioService>();
         audio?.SetMusicVolume(v);
     }
 }

@@ -3,8 +3,15 @@ using Godot;
 namespace GameFramework;
 
 /// <summary>
-/// Top-level framework autoload (Node). Hosts the ServiceRegistry and provides
-/// the only piece of static state games should reach for: <see cref="Instance"/>.
+/// Top-level framework autoload (Node). Hosts the <see cref="ServiceRegistry"/>
+/// and exposes the only piece of static state games should reach for:
+/// <see cref="Instance"/>.
+///
+/// The class is named <c>Game</c> (not <c>GameFramework</c>) to avoid a
+/// C# name-resolution ambiguity with the namespace <c>GameFramework</c>:
+/// in C# a namespace wins over a same-named type in member-access syntax,
+/// so consumers would have to write <c>GameFramework.GameFramework.Instance</c>
+/// to disambiguate. <c>Game.Instance</c> reads cleanly.
 ///
 /// Convention:
 ///   - POCO services: registered manually via <see cref="Services"/>.
@@ -14,10 +21,10 @@ namespace GameFramework;
 /// This autoload is intentionally thin. It is NOT a GameManager. Do not pile business
 /// logic here. Each concern (UI, audio, save, settings) is its own service module.
 /// </summary>
-public partial class GameFramework : Node
+public partial class Game : Node
 {
     /// <summary>Process always, even when the tree is paused (UI keeps working).</summary>
-    public static GameFramework Instance { get; private set; } = null!;
+    public static Game Instance { get; private set; } = null!;
 
     public ServiceRegistry Services { get; } = new();
 

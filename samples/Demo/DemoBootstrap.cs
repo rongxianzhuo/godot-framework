@@ -21,7 +21,7 @@ public sealed partial class DemoBootstrap : Node
         GD.Print("[DemoBootstrap] _Ready. Waiting for GameFramework autoload...");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
-        if (GameFramework.Instance == null)
+        if (Game.Instance == null)
         {
             GD.PrintErr("[DemoBootstrap] GameFramework autoload not found. Aborting.");
             GetTree().Quit(1);
@@ -29,8 +29,8 @@ public sealed partial class DemoBootstrap : Node
         }
 
         // 1) Register a POCO service.
-        GameFramework.Instance.Services.Register(new AudioService());
-        GD.Print($"[DemoBootstrap] Services registered: {GameFramework.Instance.Services.Count}");
+        Game.Instance.Services.Register(new AudioService());
+        GD.Print($"[DemoBootstrap] Services registered: {Game.Instance.Services.Count}");
 
         // 2) Push MainMenuPanel.
         GD.Print("[DemoBootstrap] Step 1: Push MainMenuPanel(arg='initial')");
