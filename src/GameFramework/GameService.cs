@@ -15,6 +15,7 @@ public abstract partial class GameService : Node
 {
     public override void _Ready()
     {
+        GD.Print($"[GameService] _Ready called on {GetType().Name}; Game.Instance null? {Game.Instance == null}");
         if (Game.Instance == null)
         {
             // Defensive: if the GameService node was added to the tree before Game's
