@@ -1,8 +1,8 @@
 # GameFramework v0.1 — 设计文档
 
 **作者**：Johnni（Framework Engineer, MagicStudio）
-**日期**：2026-09-18
-**状态**：✅ **MVP 已实现，demo 跑通** — 见 [实现总结](#实现总结)
+**日期**：2026-09-18（初版）/ 2026-09-18（v0.2 submodule 化重构）
+**状态**：✅ **MVP 已实现 + 已重构为 submodule-ready** — 见 [实现总结](#实现总结)
 **目标版本**：Godot 4.5+ / .NET 8 / Godot.NET.Sdk 4.5+
 
 ---
@@ -197,35 +197,47 @@ DemoRoot (Node, script=DemoBootstrap)
 
 ---
 
-## 5. 目录结构
+## 5. 目录结构（v0.2 submodule-ready）
 
 ```
-/shared/godot-framework/
+godot-framework/
 ├── docs/
 │   └── design_v0.1.md
 ├── scenes/
-│   └── demo.tscn
-├── scripts/
-│   ├── framework/
-│   │   ├── GameFramework.cs
-│   │   ├── ServiceRegistry.cs
-│   │   ├── GameService.cs
-│   │   ├── UIManager.cs
-│   │   ├── UIPanelBase.cs
-│   │   ├── UIPanel.cs
-│   │   ├── UIPanelT.cs
-│   │   └── UIPanelT1T2.cs
-│   └── demo/
-│       ├── DemoBootstrap.cs
+│   └── demo.tscn                  # 测试 scene（仅 framework 自身测试用）
+├── src/
+│   └── GameFramework/             # 📚 LIBRARY 代码（8 个文件，namespace GameFramework）
+│       ├── GameFramework.cs
+│       ├── ServiceRegistry.cs
+│       ├── GameService.cs
+│       ├── UIManager.cs
+│       │   ├── UIPanelBase.cs
+│       ├── UIPanel.cs
+│       ├── UIPanelT.cs
+│       └── UIPanelT1T2.cs
+├── samples/
+│   └── Demo/                      # 🧪 SAMPLE（演示用法，仅 framework 测试用）
+│       ├── AudioService.cs
 │       ├── MainMenuPanel.cs
 │       ├── SettingsPanel.cs
 │       ├── ConfirmDialog.cs
-│       └── AudioService.cs
-├── godot-framework.csproj
-├── project.godot
+│       └── DemoBootstrap.cs
+├── GodotFramework.csproj          # 库 csproj（编译 src + samples，用于自身测试）
+├── project.godot                  # 测试用 Godot 项目（autoload 指向 src/GameFramework/*.cs）
 ├── icon.svg
+├── README.md
 └── .gitignore
 ```
+
+**v0.2 submodule 化决策**：库代码放 `src/GameFramework/`，sample 放 `samples/Demo/`，消费方通过 `git submodule add addons/godot-framework` 引入后：
+- 用 `<Compile Include="addons/godot-framework/src/GameFramework/**/*.cs" />` 直接编译源码（推荐）
+- 或用 `<ProjectReference Include="addons/godot-framework/GodotFramework.csproj" />` 引用独立 assembly
+- 在消费方的 `project.godot` 注册 autoload：`res://addons/godot-framework/src/GameFramework/{GameFramework,UIManager}.cs`
+
+**为什么保留 sample 在仓库里**：
+1. 我们自己需要它来跑 headless smoke test（v0.1 没 unit test，sample 是唯一验证手段）
+2. 给消费方看"实际怎么用"的参考代码
+3. 体积小（5 个文件 ~340 行），不算污染
 
 ---
 
@@ -327,21 +339,27 @@ godot --headless --quit-after 300
 
 ✅ **MVP 完成**。`dotnet build` 通过；`godot --headless --quit-after 300` 跑通完整 demo。
 
+✅ **v0.2 submodule 化重构**（2026-09-18 17:30+ 完成）：
+- 仓库结构改为 `src/GameFramework/` + `samples/Demo/` 分离
+- `GodotFramework.csproj` 编译库 + sample（用于自身测试）
+- 消费方用 `<Compile Include>` 或 `<ProjectReference>` 集成
+- README 完整说明 submodule 集成步骤
+
 **实现的文件**（~900 行 C#）：
 
 | 文件 | 行数 | 角色 |
 |---|---|---|
-| `GameFramework.cs` | 36 | autoload 容器 + ServiceRegistry host |
-| `ServiceRegistry.cs` | 83 | Type-keyed 注册表 |
-| `GameService.cs` | 38 | Node-based service 自动注册基类 |
-| `UIManager.cs` | 222 | panel stack 管理 + UI root 创建 |
-| `UIPanelBase.cs` | 69 | 内部基类 + input bindings |
-| `UIPanel.cs` | 35 | 无 arg 无 result 变体 |
-| `UIPanelT.cs` | 34 | 单 generic 变体 |
-| `UIPanelT1T2.cs` | 47 | 双 generic 变体（带 typed close result） |
-| Demo (5 files) | ~340 | MainMenu / Settings / Confirm / Bootstrap / AudioService |
+| `src/GameFramework/GameFramework.cs` | 36 | autoload 容器 + ServiceRegistry host |
+| `src/GameFramework/ServiceRegistry.cs` | 83 | Type-keyed 注册表 |
+| `src/GameFramework/GameService.cs` | 38 | Node-based service 自动注册基类 |
+| `src/GameFramework/UIManager.cs` | 222 | panel stack 管理 + UI root 创建 |
+| `src/GameFramework/UIPanelBase.cs` | 69 | 内部基类 + input bindings |
+| `src/GameFramework/UIPanel.cs` | 35 | 无 arg 无 result 变体 |
+| `src/GameFramework/UIPanelT.cs` | 34 | 单 generic 变体 |
+| `src/GameFramework/UIPanelT1T2.cs` | 47 | 双 generic 变体（带 typed close result） |
+| `samples/Demo/*.cs` | ~340 | MainMenu / Settings / Confirm / Bootstrap / AudioService |
 
-**实现中踩的坑**（留给 v0.2+ 备忘）：
+**实现中踩的坑**（留给 v0.3+ 备忘）：
 
 1. **Godot.NET.Sdk 必须显式 `PackageReference`** — 否则 MSBuild fallback 静默成功但 source generators 不跑。
 2. **`project/assembly_name` 必须匹配 .csproj AssemblyName** — 否则 Godot 找不到项目 assembly，所有 C# 脚本"is not compiling"。
@@ -349,6 +367,8 @@ godot --headless --quit-after 300
 4. **`_ExitTree` 不调 `OnClose`** — typed 面板需要正确的 `TCloseArg` 默认值，否则触发 `InvalidCastException`。
 5. **每个 panel 类放独立文件** — Godot source generator 不允许多个同名 partial class 在同一个文件（GD0003）。
 6. **autoload 顺序**：先 `GameFramework` 再 `UIManager`（UIManager 是 GameService，注册到 GameFramework）。
+7. **`res://` 不允许 `..` 跳出项目根** — Godot 4 安全限制。所以 sample 不能独立成有 project.godot 的子工程；选择保留 sample 在根项目下用 res:// 路径访问。
+8. **MSBuild 默认 Compile glob 会把整个项目树都包含** — csproj 必须显式 `<Compile Remove>` 不该编译的文件夹。
 
 **演示场景验证的能力**：
 
@@ -359,6 +379,7 @@ godot --headless --quit-after 300
 - ✅ Push with typed arg / Await typed result
 - ✅ 嵌套 push（MainMenu → Settings → 关闭回到 MainMenu → Play 返回结果）
 - ✅ 干净退出（无泄漏 exception，资源由 Godot 释放）
+- ✅ Submodule 集成：mock consumer 项目 `git submodule add` 后能 dotnet build
 
 ---
 

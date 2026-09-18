@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://bg2xkqr8n7abc"]
 
-[ext_resource type="Script" path="res://scripts/demo/DemoBootstrap.cs" id="1_demo"]
+[ext_resource type="Script" path="res://samples/Demo/DemoBootstrap.cs" id="1_demo"]
 
 [node name="DemoRoot" type="Node"]
 script = ExtResource("1_demo")

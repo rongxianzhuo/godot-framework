@@ -1,0 +1,28 @@
+<Project Sdk="Godot.NET.Sdk/4.5.0">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>GameFramework</RootNamespace>
+    <AssemblyName>GodotFramework</AssemblyName>
+    <!--
+      GameFramework is structured as a git-submodule-ready Godot library.
+
+      Two source folders are compiled by this csproj:
+        src/GameFramework/   - library code (namespace GameFramework)
+        samples/Demo/        - sample consumer that exercises the library
+
+      The sample is built together with the library here so we can run the
+      headless smoke test via the root project.godot (which is also at this
+      level). Consumer games typically do NOT want sample code in their build,
+      so the recommended integration pattern is `<Compile Include>` on the
+      library folder only (see README.md §"Integration"). This csproj's
+      <Compile Remove="samples/**/*.cs" /> allows a consumer to also use
+      <ProjectReference> cleanly if they want a separate assembly.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Godot.NET.Sdk" Version="4.5.0" />
+  </ItemGroup>
+</Project>

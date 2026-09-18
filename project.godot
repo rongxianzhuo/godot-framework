@@ -1,10 +1,7 @@
 ; Engine configuration file.
-; It's best edited using the editor UI and not directly,
-; since the parameters that go here are not all obvious.
-;
-; Format:
-;   [section] ; section goes between []
-;   param=value ; assign values to parameters
+; GameFramework's root project.godot. Used for local headless smoke testing.
+; Consumer games use their OWN project.godot (with autoloads pointing to the
+; library at addons/godot-framework/src/GameFramework/*.cs — see README.md).
 
 config_version=5
 
@@ -18,12 +15,12 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-GameFramework="*res://scripts/framework/GameFramework.cs"
-UIManager="*res://scripts/framework/UIManager.cs"
+GameFramework="*res://src/GameFramework/GameFramework.cs"
+UIManager="*res://src/GameFramework/UIManager.cs"
 
 [dotnet]
 
-project/assembly_name="godot-framework"
+project/assembly_name="GodotFramework"
 
 [input]
 
