@@ -5,16 +5,10 @@ using Godot;
 
 namespace GameFramework;
 
-/// <summary>
-/// Policy for acquiring a panel instance when pushing.
-/// </summary>
-public enum CreatePolicy
-{
-    /// <summary>Reuse a cached instance if one exists for this panel type.</summary>
-    TryReuse = 0,
-    /// <summary>Always instantiate a new instance.</summary>
-    ForceCreate = 1,
-}
+// TODO(v0.3): reintroduce `CreatePolicy` enum (TryReuse / ForceCreate) when
+// implementing panel-instance cache + reuse. The enum existed in v0.2 but
+// was unused — see UIManager.AcquireCodeOnly which ignored the policy
+// parameter. Removed in v0.3-prep; will be re-added when reuse ships.
 
 /// <summary>
 /// Internal base for all UIPanel variants. Holds the panel stack machinery
@@ -28,8 +22,10 @@ public abstract partial class UIPanelBase : Control
     /// <summary>Set by UIManager when this panel becomes the active top.</summary>
     internal bool IsTopOfStack { get; set; }
 
-    /// <summary>Called once when the panel is first instantiated.</summary>
-    internal protected virtual void OnInitialize() { }
+    // TODO(v0.3): reintroduce `OnInitialize()` lifecycle hook (called once when
+    // panel is first instantiated). Needed for cache/reuse to safely re-build
+    // the UI tree on a cached panel without stale button handlers firing.
+    // Removed in v0.3-prep; will be re-added when reuse ships.
 
     /// <summary>Called each time the panel is pushed onto the stack (after attach).</summary>
     internal protected abstract void InvokeOnOpen(object? openArg);

@@ -1,9 +1,10 @@
-# GameFramework v0.1 — 设计文档
+# GameFramework v0.2 — 设计文档
 
-**作者**：Johnni（Framework Engineer, MagicStudio）
-**日期**：2026-09-18（初版）/ 2026-09-18（v0.2 submodule 化重构）
-**状态**：✅ **MVP 已实现 + 已重构为 submodule-ready** — 见 [实现总结](#实现总结)
-**目标版本**：Godot 4.5+ / .NET 8 / Godot.NET.Sdk 4.5+
+**作者**：Johnni（Framework Engineer, MagicStudio，v0.1 / v0.2 设计）/ Francisco（Framework Engineer, MagicStudio，v0.3-prep 接手）
+**日期**：2026-09-18（v0.1 初版）/ 2026-09-18（v0.2 submodule 化重构）/ 2026-10-05（v0.3-prep 启动：移除半成品、引入 v0.3 路线图、准备升 Godot 4.7.2 / net9.0）
+**状态**：✅ **v0.2 完成（submodule-ready，autoload 集成验证）** — 见 [实现总结](#实现总结)
+**进行中**：🚧 **v0.3-prep**（事件总线 / 屏幕管理器 / 单元测试 / Godot 升级）— 见 [v0.3 路线图](#v0.3-路线图)
+**目标版本**：Godot 4.5+ / .NET 8（v0.3 起升 4.7.2 / .NET 9 — 见路线图）
 
 ---
 
@@ -205,12 +206,12 @@ DemoRoot (Node, script=DemoBootstrap)
 ```
 godot-framework/
 ├── docs/
-│   └── design_v0.1.md
+│   └── design_v0.2.md
 ├── scenes/
 │   └── demo.tscn                  # 测试 scene（仅 framework 自身测试用）
 ├── src/
 │   └── GameFramework/             # 📚 LIBRARY 代码（8 个文件，namespace GameFramework）
-│       ├── GameFramework.cs
+│       ├── Game.cs                     # autoload 容器（v0.2.1 起从 GameFramework.cs 改名，避开 namespace/class 同名歧义）
 │       ├── ServiceRegistry.cs
 │       ├── GameService.cs
 │       ├── UIManager.cs
@@ -235,7 +236,7 @@ godot-framework/
 **v0.2 submodule 化决策**：库代码放 `src/GameFramework/`，sample 放 `samples/Demo/`，消费方通过 `git submodule add addons/godot-framework` 引入后：
 - 用 `<Compile Include="addons/godot-framework/src/GameFramework/**/*.cs" />` 直接编译源码（推荐）
 - 或用 `<ProjectReference Include="addons/godot-framework/GodotFramework.csproj" />` 引用独立 assembly
-- 在消费方的 `project.godot` 注册 autoload：`res://addons/godot-framework/src/GameFramework/{GameFramework,UIManager}.cs`
+- 在消费方的 `project.godot` 注册 autoload：`res://addons/godot-framework/src/GameFramework/{Game,UIManager}.cs`
 
 **为什么保留 sample 在仓库里**：
 1. 我们自己需要它来跑 headless smoke test（v0.1 没 unit test，sample 是唯一验证手段）
@@ -265,21 +266,27 @@ godot-framework/
 
 ---
 
-## 7. autoload 配置（`project.godot` 节选）
+## 7. autoload 配置（framework 自身 `project.godot`，v0.2 submodule 化后）
 
 ```ini
 [application]
+config/name="GameFramework MVP"
+config/description="GameFramework v0.2 — Godot 4 C# container + UI panel stack"
 run/main_scene="res://scenes/demo.tscn"
+config/features=PackedStringArray("4.5", "C#", "Forward Plus")
+config/icon="res://icon.svg"
 
 [autoload]
-GameFramework="*res://scripts/framework/GameFramework.cs"
-UIManager="*res://scripts/framework/UIManager.cs"
+GameFramework="*res://src/GameFramework/Game.cs"
+UIManager="*res://src/GameFramework/UIManager.cs"
 
 [dotnet]
-project/assembly_name="godot-framework"
+project/assembly_name="GodotFramework"
 ```
 
 **关键发现**：`project/assembly_name` 必须**匹配 .csproj 的 AssemblyName**（即 dll 文件名）。错配会让 Godot 找不到项目 assembly，所有 C# 脚本都"is not compiling"。
+
+**消费方注意**：消费方在自己的 `project.godot` 注册 framework 的 autoload 时，路径用的是 `res://addons/godot-framework/src/GameFramework/{Game,UIManager}.cs`（见 §5）。
 
 ---
 
@@ -352,7 +359,7 @@ godot --headless --quit-after 300
 
 | 文件 | 行数 | 角色 |
 |---|---|---|
-| `src/GameFramework/GameFramework.cs` | 36 | autoload 容器 + ServiceRegistry host |
+| `src/GameFramework/Game.cs` | 44 | autoload 容器 + ServiceRegistry host（v0.2.1 从 `GameFramework.cs` 改名） |
 | `src/GameFramework/ServiceRegistry.cs` | 83 | Type-keyed 注册表 |
 | `src/GameFramework/GameService.cs` | 38 | Node-based service 自动注册基类 |
 | `src/GameFramework/UIManager.cs` | 222 | panel stack 管理 + UI root 创建 |
@@ -405,3 +412,53 @@ godot --headless --quit-after 300
 - ❌ 自动 focus 恢复 / gamepad 友好性（v0.2）
 - ❌ 完整 EditorPlugin（v0.2）
 - ❌ 单元测试 / gdUnit 集成（v0.2）
+
+---
+
+## 11. v0.3 路线图
+
+**前提**：Match3 = framework 的第一款产品（不只是 demo）。这意味着 README 列在 "out-of-scope" 的功能，**只要 Match3 已经自己实现了**，v0.3 必须覆盖——否则 Match3 的实现就成了 fork-specific 模式，下游 fork 无法继承。
+
+**状态**：🚧 v0.3-prep 进行中（2026-10-05 启动，branch `dev/v0.3-prep`）
+
+### 11.1 计划交付
+
+| # | 功能 | 阶段 | 状态 | 关键决策 |
+|---|------|------|------|----------|
+| 1 | 半成品清理（`_cache` / `CreatePolicy` / `OnInitialize` 删除 + TODO 锚点） | Phase 0 | ✅ 完成 | 见 commit `c40c030` |
+| 2 | design_v0.1 → design_v0.2 重命名 + 内容同步 + 本路线图章节 | Phase 0 | 🚧 本 PR | 见本文件 |
+| 3 | Godot 4.5 → 4.7.2、net8 → net9 升级 | Phase 0 D3 | 待开工 | 静态审计干净，3 行 csproj diff |
+| 4 | README "Avoiding Common Pitfalls" 章节 | Phase 0 D4 | 待开工 | register 成派生类型、namespace 命名、`_ExitTree` 不调 `OnClose`、UI 树必须在构造函数建 |
+| 5 | README "Integration" 章节加 default-glob 警告 | Phase 0 D4 | 待开工 | 模板必须 `<Compile Remove="addons/godot-framework/samples/**/*.cs" />` |
+| 6 | `CHANGELOG.md`（v0.1 / v0.2 / v0.3 三段） | Phase 0 D4 | 待开工 | — |
+| 7 | 单元测试 scaffold + `ServiceRegistry` / `GameService` 基础覆盖 | Phase 0 D5 | 待开工 | xUnit + Godot headless runner |
+| 8 | Jacob 1:1 sync（template 集成 + Match3 迁移范围） | Phase 0 D5 | 待开工 | 见独立议程 |
+| 9 | EventBus 实装 | Phase 1 | 待开工 | `Publish<T>(T)` + `Subscribe<T>(h) → IDisposable`，AOT-friendly 字典派发，异常隔离 try/catch |
+| 10 | ScreenManager 实装 | Phase 1 (晚于 #9) | 待开工 | `Screen` 基类 + 三 typed 变体 + 单 slot 容器；内部重构 `UIPanelBase` → `ManagedNodeBase`（breaking 但 API 表面不动） |
+| 11 | Match3 迁移：`PhaseChanged` / `ScoreChanged` / `MovesChanged` → EventBus | Phase 1 | 待开工 | 现有 `event Action<T>` 保留 + `[Obsolete]`，向下兼容 |
+| 12 | Match3 迁移：`TitleScreen` / `GameScreen` / `EndScreen` → ScreenManager | Phase 2 | 待开工 | 删除 `Match3Feature.SwapScreen` + `GameScenes.Build*Screen` |
+
+### 11.2 显式不做（v0.3 不做）
+
+- ❌ 网络层 — Godot 4 `MultiplayerAPI` 已是事实标准
+- ❌ 热重载 / Mod 加载 — 高复杂度低 ROI
+- ❌ 完整 EditorPlugin — 当前体量不需要
+- ❌ 序列化 / 存档 — 等真实需求
+- ❌ GDScript 包装层 — 团队全 C# 路线
+- ❌ 资源加载服务封装 — Godot `ResourceLoader` 已够用
+- ❌ Tweener / 复杂动画系统 — 只做 fade / slide 两种就够
+
+### 11.3 兼容性策略
+
+- **Godot / .NET 版本兼容**：framework 锁最新主版本（v0.3 起 4.7.2 / net9.0），下游游戏升级 framework 时同步升级
+- **API 兼容**：Phase 1 末的 `UIPanelBase` → `ManagedNodeBase` 重命名是**唯一**源码级 breaking（API 表面不动），CHANGELOG 标注
+- **Match3 event 兼容**：现有 `event Action<T>` 保留 + `[Obsolete]`，给下游 fork 留迁移缓冲
+
+---
+
+## 12. 维护说明（v0.3 起新增）
+
+- **framework 自己 smoke test**：`cd addons/godot-framework && dotnet build GodotFramework.csproj && godot --headless --quit-after 300`（按 `README.md` "Quick start"）
+- **单元测试**：`cd addons/godot-framework/tests && dotnet test`（待 Phase 0 #7 落地后启用）
+- **模板集成方必读**：framework `README.md` 的 "Integration" + "Avoiding Common Pitfalls" 章节
+- **CHANGELOG**：所有 breaking change 在 `CHANGELOG.md` 标注版本号

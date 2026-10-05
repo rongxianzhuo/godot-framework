@@ -6,8 +6,8 @@ using Godot;
 namespace GameFramework;
 
 /// <summary>
-/// UI Manager — autoload (Node). Manages the panel stack, panel-scoped input,
-/// and caching. Reachable via <see cref="Instance"/>.
+/// UI Manager — autoload (Node). Manages the panel stack and panel-scoped
+/// input. Reachable via <see cref="Instance"/>.
 ///
 /// Scene tree layout (created by this manager in _Ready):
 ///   UIManager (Node, autoload)
@@ -18,6 +18,10 @@ namespace GameFramework;
 /// Panel-scoped input: BindInput calls on a panel only fire while that panel
 /// is the top of the stack. The manager routes _UnhandledInput events to the
 /// top panel's registered bindings.
+///
+/// v0.3-prep note: the half-finished `_cache` / `InitializePanel` plumbing
+/// from v0.2 has been removed (see TODO(v0.3) markers). Cache/reuse will be
+/// reintroduced as a coherent feature in a later v0.3 PR — see CHANGELOG.md.
 /// </summary>
 public partial class UIManager : GameService
 {
@@ -28,7 +32,10 @@ public partial class UIManager : GameService
     private CanvasLayer _uiRoot = null!;
     private Control _panelStackContainer = null!;
     private readonly Stack<UIPanelBase> _stack = new();
-    private readonly Dictionary<Type, UIPanelBase> _cache = new();
+
+    // TODO(v0.3): reintroduce `private readonly Dictionary<Type, UIPanelBase> _cache`
+    // when implementing panel-instance reuse. Removed in v0.3-prep — every push
+    // currently creates a fresh `new TPanel()`. See CHANGELOG.md v0.3 entry.
 
     public override void _Ready()
     {
@@ -62,7 +69,6 @@ public partial class UIManager : GameService
             if (p.GetParent() == _panelStackContainer)
                 _panelStackContainer.RemoveChild(p);
         }
-        _cache.Clear();
         Instance = null!;
         base._ExitTree();
     }
@@ -73,17 +79,17 @@ public partial class UIManager : GameService
 
     /// <summary>Push a no-args/no-result panel by constructing it via <c>new()</c>.</summary>
     public Task PushAsync<TPanel>() where TPanel : UIPanel, new()
-        => PushInternalAsync(AcquireCodeOnly<TPanel>(CreatePolicy.TryReuse), null);
+        => PushInternalAsync(AcquireCodeOnly<TPanel>(), null);
 
     /// <summary>Push a panel that takes an open argument but returns no result.</summary>
     public Task PushAsync<TPanel, TOpenArg>(TOpenArg arg) where TPanel : UIPanel<TOpenArg>, new()
-        => PushInternalAsync(AcquireCodeOnly<TPanel>(CreatePolicy.TryReuse), arg);
+        => PushInternalAsync(AcquireCodeOnly<TPanel>(), arg);
 
     /// <summary>Push a panel with both open arg and typed close result.</summary>
     public Task<TCloseArg> PushAsync<TPanel, TOpenArg, TCloseArg>(TOpenArg arg)
         where TPanel : UIPanel<TOpenArg, TCloseArg>, new()
     {
-        var panel = AcquireCodeOnly<TPanel>(CreatePolicy.TryReuse);
+        var panel = AcquireCodeOnly<TPanel>();
         return PushAndReturnResultAsync(panel, arg);
     }
 
@@ -128,11 +134,11 @@ public partial class UIManager : GameService
     // INTERNAL
     // ============================================================
 
-    private TPanel AcquireCodeOnly<TPanel>(CreatePolicy policy) where TPanel : UIPanelBase, new()
+    private TPanel AcquireCodeOnly<TPanel>() where TPanel : UIPanelBase, new()
     {
-        // For MVP we don't reuse cached panels. Each push creates a fresh instance.
-        // The cache exists for v0.2 reuse support but is disabled here to avoid
-        // stale button handlers firing on detached panels.
+        // Each push creates a fresh instance. Reuse/cache is planned for v0.3 —
+        // see CHANGELOG.md. Until then, do NOT cache panel instances here: a
+        // detached panel with bound button handlers would fire stale callbacks.
         var instance = new TPanel();
         instance.Name = typeof(TPanel).Name;
         return instance;
@@ -140,9 +146,6 @@ public partial class UIManager : GameService
 
     private async Task PushInternalAsync(UIPanelBase panel, object? openArg)
     {
-        // Initialize once: subscribe to signals, build UI tree.
-        InitializePanel(panel);
-
         // If there's a current top, mark it inactive (its input bindings become inert).
         if (_stack.Count > 0) _stack.Peek().IsTopOfStack = false;
 
@@ -168,10 +171,6 @@ public partial class UIManager : GameService
         panel.ClearBindings();
         panel.IsTopOfStack = false;
 
-        // Cache the instance for potential reuse (only if it has a code-only constructor).
-        // For MVP, we cache everything; more granular cache control is a v0.2 concern.
-        _cache[panel.GetType()] = panel;
-
         if (panel.GetParent() == _panelStackContainer)
             _panelStackContainer.RemoveChild(panel);
 
@@ -179,17 +178,10 @@ public partial class UIManager : GameService
         if (_stack.Count > 0) _stack.Peek().IsTopOfStack = true;
     }
 
-    private static void InitializePanel(UIPanelBase panel)
-    {
-        // Build the panel's UI tree if not already built. We call OnInitialize via
-        // a one-shot marker: panels are responsible for building their children in
-        // their constructor (the C# `new TPanel()` path means children are added
-        // before _Ready runs).
-        //
-        // For MVP: panels construct their UI tree in their own constructor.
-        // No need to call any framework method here. This method exists as a hook
-        // for future expansion (e.g. registering assets or analytics).
-    }
+    // TODO(v0.3): reintroduce `InitializePanel(UIPanelBase panel)` static hook
+    // when implementing panel-instance reuse. The hook should call
+    // `panel.OnInitialize()` to re-build the UI tree for cached panels. Removed
+    // in v0.3-prep along with `OnInitialize` (UIPanelBase.cs). See CHANGELOG.md.
 
     // ============================================================
     // INPUT ROUTING

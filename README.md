@@ -3,10 +3,10 @@
 > A Godot 4 C# game framework — singleton container + typed UI panel stack.
 > Designed as a **git submodule** for Godot 4 game projects.
 
-**Status:** v0.2 ✅ (submodule-ready, demo verified headless). See [`docs/design_v0.1.md`](docs/design_v0.1.md) for the architecture write-up.
+**Status:** v0.3-prep 🚧 (see [CHANGELOG.md](CHANGELOG.md) for what's done). Architecture in [`docs/design_v0.2.md`](docs/design_v0.2.md).
 
-**Author:** Johnni — Framework Engineer, MagicStudio  
-**Target:** Godot 4.5+ / .NET 8 / C# 12
+**Author:** Johnni — Framework Engineer, MagicStudio (v0.1 / v0.2 design); Francisco — Framework Engineer, MagicStudio (v0.3-prep maintenance)
+**Target:** Godot 4.7+ / .NET 9 / C# 12+
 
 ---
 
@@ -55,8 +55,9 @@ godot-framework/
 │   └── demo.tscn                  # The main scene run by our test project
 ├── icon.svg
 ├── README.md
+├── CHANGELOG.md                   # Version history (v0.1 / v0.2 / v0.3)
 ├── docs/
-│   └── design_v0.1.md             # Architecture + lessons learned
+│   └── design_v0.2.md             # Architecture + lessons learned (see §11 for v0.3 roadmap)
 ├── LICENSE
 └── .gitignore
 ```
@@ -93,13 +94,13 @@ external DLL dependency, cleanest IDE experience, the library code is compiled
 together with your game code (so it can't accidentally drift out of sync).
 
 ```xml
-<Project Sdk="Godot.NET.Sdk/4.5.0">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Godot.NET.Sdk" Version="4.5.0" />
+    <PackageReference Include="Godot.NET.Sdk" Version="4.7.2" />
   </ItemGroup>
   <ItemGroup>
     <!-- GameFramework library — only the src/ folder, NOT samples/. -->
@@ -115,13 +116,13 @@ If you want the library compiled as a separate assembly your game references
 during development):
 
 ```xml
-<Project Sdk="Godot.NET.Sdk/4.5.0">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Godot.NET.Sdk" Version="4.5.0" />
+    <PackageReference Include="Godot.NET.Sdk" Version="4.7.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="addons/godot-framework/GodotFramework.csproj" />
@@ -134,13 +135,42 @@ during development):
 > If that bothers you, fork the repo and add `<Compile Remove="samples/**/*.cs" />`
 > to `GodotFramework.csproj` before building.
 
+> ⚠️ **Avoid the SDK default Compile glob.**
+> If your consumer `.csproj` is `<Project Sdk="Godot.NET.Sdk/X.Y.Z">` without
+> an explicit `<Compile Include>` (Pattern A) or `<ProjectReference>` (Pattern B),
+> the SDK's default Compile glob walks the entire project tree — including
+> `addons/godot-framework/samples/Demo/*.cs` AND `addons/godot-framework/tests/**/*.cs`
+> (added in v0.3). You'll then have phantom types like
+> `GameFramework.Demo.AudioService` (and friends) compiled into your game's
+> main assembly, unused but polluting type lookup.
+>
+> Add this to your consumer `.csproj` to opt out:
+>
+> ```xml
+> <ItemGroup>
+>   <Compile Remove="addons/godot-framework/samples/**/*.cs" />
+>   <Compile Remove="addons/godot-framework/tests/**/*.cs" />
+> </ItemGroup>
+> ```
+>
+> The framework itself uses `<EnableDefaultCompileItems>false</EnableDefaultCompileItems>`
+> + explicit `<Compile Include="src/GameFramework/**/*.cs" />` +
+> `<Compile Include="samples/Demo/**/*.cs" />` in `GodotFramework.csproj`, so
+> its own build does not need this workaround.
+>
+> **Related (Android consumers):** godot-template's README documents a
+> packaging pitfall where Godot 4.7+ `.tpz` Android templates must be
+> extracted to `android/build/` (the `.tpz` contains an internal
+> `templates/` subdirectory that confuses Gradle's APK packager). See
+> `godot-template/README.md` "踩过的坑" #1.
+
 ### Step 3: Wire up autoloads (your game's `project.godot`)
 
 Add two autoload entries pointing into the submodule:
 
 ```ini
 [autoload]
-GameFramework="*res://addons/godot-framework/src/GameFramework/GameFramework.cs"
+GameFramework="*res://addons/godot-framework/src/GameFramework/Game.cs"
 UIManager="*res://addons/godot-framework/src/GameFramework/UIManager.cs"
 ```
 
@@ -192,16 +222,16 @@ public sealed partial class MyPanel : UIPanel<MyOpenArg, MyCloseResult>
 ## Quick start (running our sample)
 
 ```bash
-# 1. .NET 8 SDK
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 --install-dir /opt/dotnet
+# 1. .NET 9 SDK
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 9.0 --install-dir /opt/dotnet
 apt-get install -y libicu-dev
 
-# 2. Godot 4.5 .NET build
+# 2. Godot 4.7 .NET build
 curl -sSL -o /tmp/godot.zip \
-  "https://github.com/godotengine/godot-builds/releases/download/4.5-stable/Godot_v4.5-stable_mono_linux_x86_64.zip"
+  "https://github.com/godotengine/godot-builds/releases/download/4.7-stable/Godot_v4.7-stable_mono_linux_x86_64.zip"
 unzip -d /opt/godot /tmp/godot.zip
 apt-get install -y libfontconfig1 unzip
-ln -sf /opt/godot/Godot_v4.5-stable_mono_linux_x86_64/Godot_v4.5-stable_mono_linux.x86_64 \
+ln -sf /opt/godot/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64 \
   /usr/local/bin/godot
 
 # 3. Build + run sample headless
@@ -215,7 +245,7 @@ Expected output:
 ```
 [GameFramework] _Ready. Service registry online.
 [UIManager] _Ready. UI Root created (CanvasLayer @ layer 100).
-[DemoBootstrap] Services registered: 1
+[DemoBootstrap] Services registered: 2
 [DemoBootstrap] Step 1: Push MainMenuPanel(arg='initial')
 [MainMenuPanel] OnOpen(arg='initial')
 [MainMenuPanel] Settings clicked → push SettingsPanel
@@ -241,6 +271,90 @@ code. A GDScript game cannot use this library directly in v0.2.
 
 (Future: a thin GDScript wrapper around the C# autoloads is possible but not
 planned.)
+
+---
+
+## Avoiding Common Pitfalls
+
+These four gotchas are easy to hit when extending the framework. Each has
+been debugged during v0.1 / v0.2 development.
+
+### 1. `GameService` registers under the **derived** type, not the base
+
+If `GameService._Ready` used `Register<T>(this)`, the generic parameter `T`
+would be the static base type `GameService` — not the actual derived type
+(e.g. `UIManager`). `Resolve<UIManager>()` would then return null. The
+framework solves this with `Register(this.GetType(), this)`:
+
+```csharp
+// ✅ Correct (what GameService._Ready does internally):
+public override void _Ready()
+{
+    Game.Instance.Services.Register(this.GetType(), this);
+}
+
+// ❌ Wrong — locks the key to GameService, derived lookups fail:
+Game.Instance.Services.Register<GameService>(this);
+```
+
+If you write a custom service base class, **don't** replicate the naive pattern.
+
+### 2. Namespace and class can't share a name (CS0234)
+
+If you ever create a class named the same as its namespace, C# resolution
+prefers the namespace over the type and you get `CS0234`:
+
+```csharp
+namespace GameFramework { public class GameFramework { } }
+//                      ^^^^^^^^^^^^^^^^ CS0234: 'GameFramework' does not
+//                                         exist in namespace 'GameFramework'
+```
+
+The framework's autoload class is named `Game` (not `GameFramework`) for
+exactly this reason. If you fork the framework, keep the class name distinct
+from the namespace.
+
+### 3. `OnClose` is NOT called on `_ExitTree` / forced shutdown
+
+When `UIManager` exits the tree (scene change, app quit, force-unload), it
+removes panels from the stack **without** invoking `OnClose`. Reason: typed
+panels (`UIPanel<T1, T2>`) need a default value for `TCloseArg`, and any
+default we pick could throw `InvalidCastException` for non-trivial types
+(reference types, structs with required fields).
+
+If your panel needs cleanup that must survive `OnClose` being skipped (timers,
+external subscriptions, file handles), put it in `_ExitTree()`:
+
+```csharp
+public sealed partial class MyPanel : UIPanel<MyArg, MyResult>
+{
+    protected override void OnClose(MyResult result) { /* normal cleanup */ }
+    public override void _ExitTree() { /* always-runs cleanup */ }
+}
+```
+
+### 4. Panel UI tree must be built in the **constructor**, not `_Ready`
+
+`UIManager.PushInternalAsync` adds the panel to the tree immediately after
+construction. Any UI children added in `_Ready` arrive **after** the panel is
+already attached, leaving a frame of empty UI (and possibly missing focus
+handlers):
+
+```csharp
+public sealed partial class MyPanel : UIPanel<MyArg>
+{
+    private Button _btn = null!;
+    public MyPanel()  // ✅ children added here, before AddChild
+    {
+        _btn = new Button { Text = "OK" };
+        AddChild(_btn);
+        _btn.Pressed += () => ClosePanel();
+    }
+
+    // ❌ Too late — panel is already in the tree:
+    public override void _Ready() { AddChild(_btn); }
+}
+```
 
 ---
 
