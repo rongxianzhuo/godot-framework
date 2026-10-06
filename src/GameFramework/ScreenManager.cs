@@ -16,11 +16,14 @@ namespace GameFramework;
 ///                     └── [current screen here]
 /// </code>
 ///
+/// POCO split: the show/close state machine lives in
+/// <see cref="ScreenRouter"/>. This class is a thin Node wrapper that
+/// owns the Godot scene-tree attachment (AddChild/RemoveChild) and
+/// forwards ShowAsync calls to the router.
+///
 /// Only one Screen is visible at a time. Calling <c>ShowAsync</c> while
 /// another screen is active throws <see cref="InvalidOperationException"/>
-/// (close the current screen first — await its ShowAsync task). The previous
-/// screen is **not** force-removed; this is intentional to prevent accidental
-/// stack corruption from concurrent swap requests.
+/// (close the current screen first — await its ShowAsync task).
 ///
 /// Layer ordering: Screen (99) sits below UI panels (100) so dialogs can
 /// overlay the active screen.
@@ -32,28 +35,92 @@ public sealed partial class ScreenManager : GameService
     /// <summary>CanvasLayer index for the screen layer. Below UI panels (100).</summary>
     public const int ScreenLayer = 99;
 
-    private CanvasLayer _screenLayer = null!;
-    private Control _screenContainer = null!;
-    private Screen? _current;
-    private bool _isShowing;
+    private CanvasLayer? _screenLayer;
+    private Control? _screenContainer;
+    private readonly ScreenRouter _router;
+
+    public ScreenManager()
+    {
+        // Default factory: Activator.CreateInstance + Name assignment.
+        // Attach/detach callbacks close over the container via lazy init —
+        // the container is built in _Ready, but ShowAsync calls work as
+        // long as the user awaits ShowAsync only after _Ready.
+        _router = new ScreenRouter(
+            screenFactory: t =>
+            {
+                var s = (Screen)Activator.CreateInstance(t)!;
+                s.Name = t.Name;
+                return s;
+            },
+            attach: AttachScreen,
+            detach: DetachScreen,
+            errorLogger: msg => GD.PrintErr($"[ScreenManager] {msg}")
+        );
+    }
 
     /// <summary>The currently-shown screen, or null if none.</summary>
-    public Screen? Current => _current;
+    public Screen? Current => _router.Current;
 
-    /// <summary>True while a ShowAsync task is awaiting its screen's close. Used to throw on overlapping ShowAsync.</summary>
-    public bool IsShowing => _isShowing;
+    /// <summary>True while a ShowAsync task is awaiting its screen's close.</summary>
+    public bool IsShowing => _router.IsShowing;
 
     /// <summary>Raised after a screen is attached and OnShow has fired.</summary>
-    public event Action<Screen>? ScreenShown;
+    public event Action<Screen>? ScreenShown
+    {
+        add => _router.ScreenShown += value;
+        remove => _router.ScreenShown -= value;
+    }
 
     /// <summary>Raised after a screen is detached (via CloseScreen).</summary>
-    public event Action<Screen>? ScreenClosed;
+    public event Action<Screen>? ScreenClosed
+    {
+        add => _router.ScreenClosed += value;
+        remove => _router.ScreenClosed -= value;
+    }
 
     public override void _Ready()
     {
         base._Ready();
         Instance = this;
         ProcessMode = ProcessModeEnum.Always;
+
+        EnsureContainer();
+        GD.Print("[ScreenManager] _Ready. Screen layer created (CanvasLayer @ layer 99).");
+    }
+
+    public override void _ExitTree()
+    {
+        // Forceful shutdown — just remove from tree without invoking OnClose
+        // (we don't know the right typed default for each screen's TCloseResult).
+        var current = _router.Current;
+        if (current != null && _screenContainer != null && current.GetParent() == _screenContainer)
+            _screenContainer.RemoveChild(current);
+        if (Instance == this) Instance = null!;
+        base._ExitTree();
+    }
+
+    // ============================================================
+    // SHOW API — all delegate to _router
+    // ============================================================
+
+    public Task ShowAsync<TScreen>() where TScreen : Screen, new()
+        => _router.ShowAsync<TScreen>();
+
+    public Task ShowAsync<TScreen, TOpenArg>(TOpenArg arg)
+        where TScreen : Screen<TOpenArg>, new()
+        => _router.ShowAsync<TScreen, TOpenArg>(arg);
+
+    public Task<TCloseResult> ShowAsync<TScreen, TOpenArg, TCloseResult>(TOpenArg arg)
+        where TScreen : Screen<TOpenArg, TCloseResult>, new()
+        => _router.ShowAsync<TScreen, TOpenArg, TCloseResult>(arg);
+
+    // ============================================================
+    // INTERNAL — attach/detach bridge for ScreenRouter
+    // ============================================================
+
+    private void EnsureContainer()
+    {
+        if (_screenContainer != null) return;
 
         _screenLayer = new CanvasLayer { Name = "ScreenLayer", Layer = ScreenLayer };
         AddChild(_screenLayer);
@@ -66,93 +133,19 @@ public sealed partial class ScreenManager : GameService
             MouseFilter = Control.MouseFilterEnum.Stop, // catch clicks so unfocused UI doesn't leak
         };
         _screenLayer.AddChild(_screenContainer);
-
-        GD.Print("[ScreenManager] _Ready. Screen layer created (CanvasLayer @ layer 99).");
     }
 
-    public override void _ExitTree()
+    private void AttachScreen(Screen screen)
     {
-        // Forceful shutdown — just remove from tree without invoking OnClose
-        // (we don't know the right typed default for each screen's TCloseResult).
-        if (_current != null && _current.GetParent() == _screenContainer)
-            _screenContainer.RemoveChild(_current);
-        _current = null;
-        if (Instance == this) Instance = null!;
-        base._ExitTree();
+        EnsureContainer();
+        _screenContainer!.AddChild(screen);
+        screen.IsActive = true;
     }
 
-    // ============================================================
-    // SHOW API
-    // ============================================================
-
-    /// <summary>Show a screen with no open argument and no close result.</summary>
-    public Task ShowAsync<TScreen>() where TScreen : Screen, new()
-        => ShowInternalAsync(Acquire<TScreen>(), null);
-
-    /// <summary>Show a screen with a typed open argument but no close result.</summary>
-    public Task ShowAsync<TScreen, TOpenArg>(TOpenArg arg) where TScreen : Screen<TOpenArg>, new()
-        => ShowInternalAsync(Acquire<TScreen>(), arg);
-
-    /// <summary>Show a screen with both open arg and typed close result.</summary>
-    public Task<TCloseResult> ShowAsync<TScreen, TOpenArg, TCloseResult>(TOpenArg arg)
-        where TScreen : Screen<TOpenArg, TCloseResult>, new()
+    private void DetachScreen(Screen screen)
     {
-        var screen = Acquire<TScreen>();
-        return ShowAndReturnResultAsync(screen, arg);
-    }
-
-    // ============================================================
-    // INTERNAL
-    // ============================================================
-
-    private TScreen Acquire<TScreen>() where TScreen : Screen, new()
-    {
-        var instance = new TScreen();
-        instance.Name = typeof(TScreen).Name;
-        return instance;
-    }
-
-    private async Task<TCloseResult> ShowAndReturnResultAsync<TOpenArg, TCloseResult>(
-        Screen<TOpenArg, TCloseResult> typedScreen, TOpenArg arg)
-    {
-        await ShowInternalAsync(typedScreen, arg);
-        return typedScreen.Result;
-    }
-
-    private async Task ShowInternalAsync(Screen screen, object? openArg)
-    {
-        if (_isShowing || _current != null)
-        {
-            throw new InvalidOperationException(
-                $"[ScreenManager] Cannot show '{screen.GetType().Name}' while another screen is active " +
-                $"('{_current?.GetType().Name ?? "<none>"}'). Close the current screen first " +
-                "(await its ShowAsync task) before showing a new one.");
-        }
-        _isShowing = true;
-        try
-        {
-            _screenContainer.AddChild(screen);
-            _current = screen;
-            screen.IsActive = true;
-
-            // Fire OnShow with the typed arg.
-            try { screen.InvokeOnShow(openArg); }
-            catch (Exception ex) { GD.PrintErr($"[ScreenManager] OnShow threw for {screen.GetType().Name}: {ex}"); }
-
-            ScreenShown?.Invoke(screen);
-
-            // Await the screen's close task. When it completes, finalize.
-            try { await screen.GetCloseTask(); }
-            catch (Exception ex) { GD.PrintErr($"[ScreenManager] Close task threw for {screen.GetType().Name}: {ex}"); }
-        }
-        finally
-        {
-            screen.IsActive = false;
-            if (screen.GetParent() == _screenContainer)
-                _screenContainer.RemoveChild(screen);
-            _current = null;
-            ScreenClosed?.Invoke(screen);
-            _isShowing = false;
-        }
+        screen.IsActive = false;
+        if (_screenContainer != null && screen.GetParent() == _screenContainer)
+            _screenContainer.RemoveChild(screen);
     }
 }

@@ -23,7 +23,10 @@ public abstract partial class Screen<TOpenArg, TCloseResult> : Screen
     internal TCloseResult Result { get; private set; } = default!;
 
     internal protected override void InvokeOnShow(object? openArg) => OnShow((TOpenArg)openArg!);
-    internal protected override void InvokeOnClose(object? closeArg) => OnClose((TCloseResult)closeArg!);
+    // The typed result is stored on `Result` by CloseScreen — read it
+    // directly here so OnClose gets the right value regardless of how
+    // CloseScreen was called (default-init, typed, or wrapped via ScreenManager).
+    internal protected override void InvokeOnClose(object? closeArg) => OnClose(Result);
     internal override Task GetCloseTask() => TypedTcs.Task;
 
     /// <summary>Called when this screen is shown, with the typed argument.</summary>

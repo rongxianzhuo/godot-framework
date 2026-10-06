@@ -146,6 +146,21 @@ public class ScreenManagerContractTests
     }
 
     [Fact]
+    public void ScreenManager_HasPrivateRouterField_OfTypeScreenRouter()
+    {
+        // POCO split: ScreenManager wraps a ScreenRouter field for the
+        // show/close state machine. The field must be private (manager
+        // owns the lifecycle, callers go through public ShowAsync).
+        var field = typeof(ScreenManager).GetField(
+            "_router",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        Assert.Equal(typeof(ScreenRouter), field!.FieldType);
+        Assert.True(field.IsPrivate, "_router should be private (it's an implementation detail of the wrapper).");
+        Assert.True(field.IsInitOnly, "_router should be readonly (initialized in the constructor and never reassigned).");
+    }
+
+    [Fact]
     public void ScreenT1T2_HasTypedCloseScreenOverloads()
     {
         // Use DeclaredOnly so we only see methods on Screen<T1, T2> itself,
