@@ -9,7 +9,8 @@ namespace GameFramework.Demo;
 ///   1. Register a POCO service (AudioService).
 ///   2. Push MainMenuPanel → await typed string result.
 ///   3. Push ConfirmDialog → await typed bool result.
-///   4. Quit cleanly.
+///   4. Run EventBusDemo (exercises EventBus publish/subscribe).
+///   5. Quit cleanly.
 ///
 /// For headless smoke testing, button presses are simulated via Timer-driven
 /// EmitSignal calls. In a real game, the user clicks for real.
@@ -37,6 +38,7 @@ public sealed partial class DemoBootstrap : Node
         var mainTask = UIManager.Instance.PushAsync<MainMenuPanel, string, string>("initial");
 
         // Auto-click Play after a brief settle delay.
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(GetTree().CreateTimer(0.2), SceneTreeTimer.SignalName.Timeout);
         if (UIManager.Instance.Current is MainMenuPanel mp)
         {
@@ -75,6 +77,19 @@ public sealed partial class DemoBootstrap : Node
 
             var confirmResult = await confirmTask;
             GD.Print($"[DemoBootstrap] ConfirmDialog returned {confirmResult}");
+        }
+
+        // 4) EventBus demo (exercises the new EventBus subsystem).
+        //    Step 3 in the bootstrap flow. The autoload ordering guarantees
+        //    EventBus.Instance is set before DemoBootstrap._Ready() runs.
+        GD.Print("[DemoBootstrap] Step 3: EventBus demo");
+        if (EventBus.Instance != null)
+        {
+            EventBusDemo.Run(EventBus.Instance);
+        }
+        else
+        {
+            GD.PrintErr("[DemoBootstrap] EventBus autoload not found. Skipping EventBus demo.");
         }
 
         // Let any deferred prints flush.

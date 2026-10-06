@@ -3,9 +3,9 @@
 > A Godot 4 C# game framework — singleton container + typed UI panel stack.
 > Designed as a **git submodule** for Godot 4 game projects.
 
-**Status:** v0.3-prep 🚧 (see [CHANGELOG.md](CHANGELOG.md) for what's done). Architecture in [`docs/design_v0.2.md`](docs/design_v0.2.md).
+**Status:** v0.4-alpha 🚧 (see [CHANGELOG.md](CHANGELOG.md) for what's done). Architecture in [`docs/design_v0.2.md`](docs/design_v0.2.md).
 
-**Author:** Johnni — Framework Engineer, MagicStudio (v0.1 / v0.2 design); Francisco — Framework Engineer, MagicStudio (v0.3-prep maintenance)
+**Author:** Johnni — Framework Engineer, MagicStudio (v0.1 / v0.2 design); Francisco — Framework Engineer, MagicStudio (v0.3 / v0.4 maintenance)
 **Target:** Godot 4.7+ / .NET 9 / C# 12+
 
 ---
@@ -13,7 +13,7 @@
 ## What this is
 
 A minimal, AOT-friendly game framework for Godot 4 C# projects, built from scratch
-(not a port of any Unity/Godot prior work). Two modules:
+(not a port of any Unity/Godot prior work). Three modules:
 
 1. **Singleton container** — type-safe service registry hosted by a Godot autoload.
    Supports both Node-based services (auto-registered on `_Ready`) and plain POCO services.
@@ -22,9 +22,13 @@ A minimal, AOT-friendly game framework for Godot 4 C# projects, built from scrat
    three typed variants: `UIPanel`, `UIPanel<TOpenArg>`, `UIPanel<TOpenArg, TCloseArg>`.
    Awaitable push with typed open args and typed close results.
 
-**Explicitly out of scope** (v0.3+): state machines, resource loading, event bus,
-serialization, hot-reload, networking, tweener, panel cache, editor plugin,
-unit tests.
+3. **Event bus** (v0.4-alpha) — synchronous in-process pub/sub. `EventBus` is
+   the autoload Node (auto-registered with the service registry); `EventDispatcher`
+   is the pure POCO underneath it. Type-keyed, error-isolated, AOT-friendly
+   (no reflection, no source generators).
+
+**Explicitly out of scope** (v0.4+): state machines, resource loading,
+serialization, hot-reload, networking, tweener, panel cache, editor plugin.
 
 ---
 
@@ -35,7 +39,7 @@ godot-framework/
 ├── GodotFramework.csproj          # Library + sample (for our own smoke testing)
 ├── project.godot                  # Our test project's Godot config
 ├── src/
-│   └── GameFramework/             # LIBRARY CODE (8 .cs files, namespace GameFramework)
+│   └── GameFramework/             # LIBRARY CODE (10 .cs files, namespace GameFramework)
 │       ├── Game.cs                  # The autoload class (note: NOT GameFramework.cs; see below)
 │       ├── ServiceRegistry.cs
 │       ├── GameService.cs
@@ -43,19 +47,22 @@ godot-framework/
 │       ├── UIPanelBase.cs
 │       ├── UIPanel.cs
 │       ├── UIPanelT.cs
-│       └── UIPanelT1T2.cs
+│       ├── UIPanelT1T2.cs
+│       ├── EventDispatcher.cs      # POCO pub/sub (added v0.4-alpha)
+│       └── EventBus.cs             # Node wrapper autoload (added v0.4-alpha)
 ├── samples/
-│   └── Demo/                      # SAMPLE: exercises every UIPanel variant + service resolution
+│   └── Demo/                      # SAMPLE: exercises every UIPanel variant + service resolution + EventBus
 │       ├── AudioService.cs
 │       ├── MainMenuPanel.cs
 │       ├── SettingsPanel.cs
 │       ├── ConfirmDialog.cs
+│       ├── EventBusDemo.cs         # Added v0.4-alpha (invoked by DemoBootstrap as Step 3)
 │       └── DemoBootstrap.cs
 ├── scenes/
 │   └── demo.tscn                  # The main scene run by our test project
 ├── icon.svg
 ├── README.md
-├── CHANGELOG.md                   # Version history (v0.1 / v0.2 / v0.3)
+├── CHANGELOG.md                   # Version history (v0.1 / v0.2 / v0.3 / v0.4-alpha)
 ├── docs/
 │   └── design_v0.2.md             # Architecture + lessons learned (see §11 for v0.3 roadmap)
 ├── LICENSE
@@ -174,10 +181,20 @@ GameFramework="*res://addons/godot-framework/src/GameFramework/Game.cs"
 UIManager="*res://addons/godot-framework/src/GameFramework/UIManager.cs"
 ```
 
+Add a third line if you also use `EventBus`:
+
+```ini
+[autoload]
+GameFramework="*res://addons/godot-framework/src/GameFramework/Game.cs"
+UIManager="*res://addons/godot-framework/src/GameFramework/UIManager.cs"
+EventBus="*res://addons/godot-framework/src/GameFramework/EventBus.cs"
+```
+
 You only need `UIManager` if you actually use the UI panel stack — drop the
 line if you're only using `ServiceRegistry`. Order matters: `GameFramework`
-must be listed before `UIManager` (UIManager is a `GameService` that
-auto-registers with `Game.Instance.Services`).
+must be listed **first**; `UIManager` and `EventBus` (both `GameService`s)
+auto-register with `Game.Instance.Services` and need `Game.Instance` to
+exist when their own `_Ready` fires.
 
 > **Class naming note:** the autoload class is named `Game` (not
 > `GameFramework`) because the C# namespace and class cannot share a name
@@ -217,6 +234,30 @@ public sealed partial class MyPanel : UIPanel<MyOpenArg, MyCloseResult>
 }
 ```
 
+Publish and subscribe to game-wide events with `EventBus` (v0.4-alpha). The
+`using var` pattern gives you scope-bound auto-unsubscribe — the token's
+`Dispose()` runs at the end of the enclosing scope:
+
+```csharp
+// Publish from anywhere — synchronous, error-isolated:
+EventBus.Instance.Publish(new GamePhaseChanged("playing"));
+
+// Subscribe with auto-cleanup at scope exit:
+using var sub = EventBus.Instance.Subscribe<GamePhaseChanged>(evt =>
+    GD.Print($"phase is now {evt.NewPhase}"));
+// sub.Dispose() runs at end of method/scope → unsubscribes
+```
+
+For tooling or tests where a Godot Node lifecycle is overkill, use the
+underlying POCO `EventDispatcher` directly (no autoload required):
+
+```csharp
+var bus = new EventDispatcher();           // production: GD.PrintErr on subscriber throws
+var silentBus = new EventDispatcher(_ => { });  // tests: silent error logger
+using var sub = silentBus.Subscribe<MyEvent>(handler);
+bus.Publish(new MyEvent(...));
+```
+
 ---
 
 ## Quick start (running our sample)
@@ -245,7 +286,7 @@ Expected output:
 ```
 [GameFramework] _Ready. Service registry online.
 [UIManager] _Ready. UI Root created (CanvasLayer @ layer 100).
-[DemoBootstrap] Services registered: 2
+[DemoBootstrap] Services registered: 3     ← 1 added v0.4-alpha (EventBus autoload)
 [DemoBootstrap] Step 1: Push MainMenuPanel(arg='initial')
 [MainMenuPanel] OnOpen(arg='initial')
 [MainMenuPanel] Settings clicked → push SettingsPanel
@@ -258,6 +299,15 @@ Expected output:
 [ConfirmDialog] OnOpen(message='Start game?')
 [ConfirmDialog] OnClose(result=True)
 [DemoBootstrap] ConfirmDialog returned True
+[DemoBootstrap] Step 3: EventBus demo              ← added v0.4-alpha
+[EventBusDemo] Starting
+[EventBusDemo] After subscribe: EventTypeCount=2, SubscriberCount=2
+[EventBusDemo] HelloEvent received: 'first' (total: 1)
+[EventBusDemo] CounterEvent received: 10 (sum: 10)
+[EventBusDemo] HelloEvent received: 'second' (total: 2)
+[EventBusDemo] CounterEvent received: 32 (sum: 42)
+[EventBusDemo] After publish: helloCount=2, counterSum=42
+[EventBusDemo] Done (subscribers will unsubscribe on Run() return)
 [DemoBootstrap] Demo complete. Quitting.
 ```
 
