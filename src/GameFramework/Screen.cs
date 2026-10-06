@@ -17,7 +17,7 @@ namespace GameFramework;
 /// To close a screen with no result, call <see cref="CloseScreen(object?)"/>
 /// from anywhere within the screen.
 /// </summary>
-public abstract partial class Screen : Control
+public abstract partial class Screen : ManagedNodeBase
 {
     /// <summary>Set by ScreenManager when this screen becomes the active one.</summary>
     internal bool IsActive { get; set; }
@@ -29,10 +29,10 @@ public abstract partial class Screen : Control
     internal protected virtual void InvokeOnShow(object? openArg) => OnShow();
 
     /// <summary>Called by ScreenManager when this screen is closed (graceful path).</summary>
-    internal protected virtual void InvokeOnClose(object? closeArg) => OnClose();
+    internal protected override void InvokeOnClose(object? closeArg) => OnClose();
 
     /// <summary>Returns the close completion task for ScreenManager to await.</summary>
-    internal virtual Task GetCloseTask() => Tcs.Task;
+    internal override Task GetCloseTask() => Tcs.Task;
 
     /// <summary>Called when this screen is shown. Override for setup logic.</summary>
     protected virtual void OnShow() { }

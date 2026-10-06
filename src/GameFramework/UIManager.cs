@@ -31,9 +31,9 @@ public partial class UIManager : GameService
 
     private CanvasLayer _uiRoot = null!;
     private Control _panelStackContainer = null!;
-    private readonly Stack<UIPanelBase> _stack = new();
+    private readonly Stack<ManagedNodeBase> _stack = new();
 
-    // TODO(v0.3): reintroduce `private readonly Dictionary<Type, UIPanelBase> _cache`
+    // TODO(v0.3): reintroduce `private readonly Dictionary<Type, ManagedNodeBase> _cache`
     // when implementing panel-instance reuse. Removed in v0.3-prep — every push
     // currently creates a fresh `new TPanel()`. See CHANGELOG.md v0.3 entry.
 
@@ -125,7 +125,7 @@ public partial class UIManager : GameService
     }
 
     /// <summary>Current top panel (or null if stack empty). Useful for diagnostics.</summary>
-    public UIPanelBase? Current => _stack.Count > 0 ? _stack.Peek() : null;
+    public ManagedNodeBase? Current => _stack.Count > 0 ? _stack.Peek() : null;
 
     /// <summary>Current stack depth.</summary>
     public int Depth => _stack.Count;
@@ -134,7 +134,7 @@ public partial class UIManager : GameService
     // INTERNAL
     // ============================================================
 
-    private TPanel AcquireCodeOnly<TPanel>() where TPanel : UIPanelBase, new()
+    private TPanel AcquireCodeOnly<TPanel>() where TPanel : ManagedNodeBase, new()
     {
         // Each push creates a fresh instance. Reuse/cache is planned for v0.3 —
         // see CHANGELOG.md. Until then, do NOT cache panel instances here: a
@@ -144,7 +144,7 @@ public partial class UIManager : GameService
         return instance;
     }
 
-    private async Task PushInternalAsync(UIPanelBase panel, object? openArg)
+    private async Task PushInternalAsync(ManagedNodeBase panel, object? openArg)
     {
         // If there's a current top, mark it inactive (its input bindings become inert).
         if (_stack.Count > 0) _stack.Peek().IsTopOfStack = false;
@@ -162,7 +162,7 @@ public partial class UIManager : GameService
         catch (Exception e) { GD.PrintErr($"[UIManager] Close task threw for {panel.GetType().Name}: {e}"); }
     }
 
-    private void FinalizePop(UIPanelBase panel, object? closeArg)
+    private void FinalizePop(ManagedNodeBase panel, object? closeArg)
     {
         // Fire OnClose before detaching.
         try { panel.InvokeOnClose(closeArg); }
@@ -178,10 +178,11 @@ public partial class UIManager : GameService
         if (_stack.Count > 0) _stack.Peek().IsTopOfStack = true;
     }
 
-    // TODO(v0.3): reintroduce `InitializePanel(UIPanelBase panel)` static hook
+    // TODO(v0.3): reintroduce `InitializePanel(ManagedNodeBase panel)` static hook
     // when implementing panel-instance reuse. The hook should call
     // `panel.OnInitialize()` to re-build the UI tree for cached panels. Removed
-    // in v0.3-prep along with `OnInitialize` (UIPanelBase.cs). See CHANGELOG.md.
+    // in v0.3-prep along with `OnInitialize` (was in UIPanelBase.cs, renamed
+    // to ManagedNodeBase.cs in v0.5-alpha). See CHANGELOG.md.
 
     // ============================================================
     // INPUT ROUTING
