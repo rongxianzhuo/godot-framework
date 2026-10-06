@@ -6,7 +6,7 @@ namespace GameFramework;
 /// <summary>
 /// Panel that takes a typed open argument but does not return a result.
 /// </summary>
-public abstract partial class UIPanel<TOpenArg> : UIPanelBase
+public abstract partial class UIPanel<TOpenArg> : ManagedNodeBase
 {
     private TaskCompletionSource? _tcs;
 

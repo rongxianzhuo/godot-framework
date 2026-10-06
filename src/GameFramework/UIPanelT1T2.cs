@@ -7,7 +7,7 @@ namespace GameFramework;
 /// Panel that takes a typed open argument and returns a typed close result.
 /// The push caller's Task&lt;TCloseArg&gt; resolves to whatever the panel passes to ClosePanel.
 /// </summary>
-public abstract partial class UIPanel<TOpenArg, TCloseArg> : UIPanelBase
+public abstract partial class UIPanel<TOpenArg, TCloseArg> : ManagedNodeBase
 {
     private TaskCompletionSource<TCloseArg>? _tcs;
 

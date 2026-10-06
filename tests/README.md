@@ -17,14 +17,20 @@ tests/
 │   ├── ServiceRegistryTests.cs              # 14 POCO tests (13 active + 1 skipped)
 │   ├── DerivedTypeRegistrationTests.cs      # 6 tests (the "Pitfall #1" principle)
 │   └── GameServiceContractTests.cs          # 4 structural / reflection tests
-└── EventBusTests/                           # Phase 1 (v0.4)
-    ├── EventBusTests.csproj                 # Godot.NET.Sdk/4.7.2 + net9.0
-    ├── EventBusTests.cs                     # 12 EventDispatcher POCO tests
-    ├── EventBusContractTests.cs             # 6 EventBus structural / reflection tests
-    └── GameServiceLifecycleTests.cs         # 9 EventBus lifecycle IL-shape tests
+├── EventBusTests/                           # Phase 1 (v0.4)
+│   ├── EventBusTests.csproj                 # Godot.NET.Sdk/4.7.2 + net9.0
+│   ├── EventBusTests.cs                     # 12 EventDispatcher POCO tests
+│   ├── EventBusContractTests.cs             # 6 EventBus structural / reflection tests
+│   └── GameServiceLifecycleTests.cs         # 9 EventBus lifecycle IL-shape tests
+└── ScreenManagerTests/                      # Phase 1 (v0.5)
+    ├── ScreenManagerTests.csproj            # Godot.NET.Sdk/4.7.2 + net9.0
+    ├── TestFixtures.cs                      # 4 test screen classes (TestScreen, TestScreenOf<T>, TestScreenOfT<T1,T2>, ThrowingScreen)
+    ├── ScreenManagerContractTests.cs        # 12 structural / reflection tests
+    ├── ScreenManagerLifecycleTests.cs       # 8 IL-shape lifecycle tests
+    └── ScreenRouterTests.cs                 # 10 ScreenRouter POCO behavior tests
 ```
 
-**Total: 51 tests** (50 passed + 1 skipped) across both projects under
+**Total: 81 tests** (80 passed + 1 skipped) across all three projects under
 `dotnet test`. The 1 skipped test exercises the `GD.PrintErr` warning
 path which requires a Godot engine runtime (see "Out of scope" below).
 
@@ -127,6 +133,85 @@ IL bytecode of `_Ready` / `_ExitTree` to verify (without instantiating):
 The IL scanner handles both single-byte opcodes and the `0xFE` two-byte
 prefix (e.g. `ceq`) so it walks the full method body correctly.
 
+### `ScreenManagerTests` (30 tests)
+
+Phase 1 v0.5-alpha test surface. Three fixtures exercising
+`ScreenManager` (the Node wrapper) + `ScreenRouter` (the POCO
+underneath) + the `Screen` / `Screen<T>` / `Screen<T1,T2>` variants.
+
+#### `TestFixtures.cs` (4 classes)
+
+Test screen classes (`TestScreen`, `TestScreenOf<T>`,
+`TestScreenOfT<T1, T2>`, `ThrowingScreen`). All `partial` (Godot
+SDK requires it for GodotObject subclasses). Each exposes
+`TriggerClose*` helpers because the framework's `CloseScreen` is
+`protected` (only subclasses can call it), so tests use these public
+wrappers as the canonical way to resolve the pending `ShowAsync` task.
+
+Tests use `FormatterServices.GetUninitializedObject` inside each test
+method to create uninitialized Screen instances — this skips the
+`Control` base ctor (which calls Godot native bindings unavailable
+under plain `dotnet test`), but the Screen-managed fields (lazy TCS,
+`IsActive`, virtual `OnShow`/`OnClose`) all work fine without native init.
+
+#### `ScreenManagerContractTests` (12 tests)
+
+Structural reflection on `ScreenManager` + `Screen` variants — no
+instantiation, no Godot runtime:
+
+- `ScreenManager` is `sealed`
+- `ScreenManager` inherits `GameService` → autoload-eligible
+- `ScreenManager.Instance` static has `private` setter
+- `ScreenManager.Current` is read-only `Screen` (delegates to router)
+- `ScreenManager.ScreenShown` / `ScreenClosed` events use `Action<Screen>`
+- `ScreenManager` has 3 `ShowAsync` overloads matching the §4 draft:
+  1 generic / 2 generic / 3 generic args
+- `Screen` is abstract `: ManagedNodeBase` (renamed from `: Control`
+  in v0.5-alpha)
+- `Screen<T>` + `Screen<T1,T2>` are abstract
+- All Screen variants inherit `Screen` (sibling design, not nested)
+- `Screen.CloseScreen()` is protected (no-arg, sets non-typed TCS)
+- `Screen<T1,T2>` has 2 declared `CloseScreen` overloads
+  (`CloseScreen(TCloseResult)` + `CloseScreen()` default)
+- `ScreenManager._router` is `private readonly ScreenRouter`
+
+#### `ScreenManagerLifecycleTests` (8 tests)
+
+IL-shape reflection tests for `ScreenManager._Ready`/`_ExitTree`. Same
+byte-walking IL scanner as `GameServiceLifecycleTests` (handles 0xFE
+two-byte prefixes). Verifies:
+
+- `_Ready` / `_ExitTree` are `public void` no-args overrides
+- Both are true `override`s — `GetBaseDefinition` walks to `Godot.Node`
+- `_Ready` calls `GameService._Ready()` (ServiceRegistry registration)
+- `_Ready` calls `set_Instance` (auto-property setter)
+- `_ExitTree` calls `GameService._ExitTree()` (cleanup)
+- `_ExitTree` calls `set_Instance` to null
+
+#### `ScreenRouterTests` (10 tests)
+
+POCO behavior tests for `ScreenRouter`. No Godot runtime required —
+tests use `FormatterServices.GetUninitializedObject` to create
+uninitialized Screen instances without invoking the `Control` base ctor.
+`SYSLIB0050` (FormatterServices obsolete) suppressed with `#pragma`
++ rationale comment.
+
+- Initial state: default constructor doesn't throw / `Current` is null
+  / `IsShowing` is false (3 tests)
+- Runtime behavior (Mark's 5):
+  - `ShowAsync_DefaultScreen_InvokesOnShow` — default screen invokes
+    `OnShow` synchronously before the close-task await
+  - `ShowAsync_WithOpenArg_PassesArgToScreen` — typed open argument
+    passes through
+  - `ShowAsync_WithCloseResult_ResolvesTask` — typed result propagates
+    from `CloseScreen(result)` to `Task<TCloseResult>` awaiter
+  - `ShowAsync_TwoScreensSequentially_LifecycleCorrect` — sequential
+    show/close with full lifecycle (OnShow + OnClose both fire)
+  - `ShowAsync_DuringTransition_Throws` — overlapping ShowAsync
+    throws `InvalidOperationException`
+- Events: `ScreenShown` / `ScreenClosed` fire with the screen instance
+- Error logger: injected `Action<string>` captures `OnShow` exceptions
+
 ## Out of scope (future work)
 
 Full `GameService._Ready()` / `_ExitTree()` **lifecycle** tests — i.e.,
@@ -167,6 +252,9 @@ Passed!  - Failed: 0, Passed: 23, Skipped: 1, Total: 24
 
 # EventBusTests
 Passed!  - Failed: 0, Passed: 27, Skipped: 0, Total: 27
+
+# ScreenManagerTests
+Passed!  - Failed: 0, Passed: 30, Skipped: 0, Total: 30
 ```
 
 The 1 skipped test (`ServiceRegistryTests.Register_DifferentInstance_ReplacesAndWarns`)

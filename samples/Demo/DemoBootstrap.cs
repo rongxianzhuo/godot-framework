@@ -92,6 +92,41 @@ public sealed partial class DemoBootstrap : Node
             GD.PrintErr("[DemoBootstrap] EventBus autoload not found. Skipping EventBus demo.");
         }
 
+        // 5) ScreenManager demo (exercises single-screen swap pattern).
+        //    Step 4 in the bootstrap flow. The autoload ordering guarantees
+        //    ScreenManager.Instance is set before DemoBootstrap._Ready() runs.
+        GD.Print("[DemoBootstrap] Step 4: ScreenManager demo");
+        if (ScreenManager.Instance != null)
+        {
+            // Start the demo (it awaits ShowAsync<TitleScreen>() then
+            // ShowAsync<GameScreen, ...>()). Auto-click each screen's
+            // button via EmitSignal — same pattern as MainMenuPanel above.
+            var demoTask = ScreenManagerDemo.Run(ScreenManager.Instance);
+
+            // Auto-click TitleScreen.PlayButton (after brief settle).
+            await ToSignal(GetTree().CreateTimer(0.2), SceneTreeTimer.SignalName.Timeout);
+            if (ScreenManager.Instance.Current is TitleScreen ts)
+            {
+                GD.Print("[DemoBootstrap] Auto-click TitleScreen.PlayButton (exercises non-typed ShowAsync)");
+                ts.GetNode<Button>("Background/VBox/PlayButton").EmitSignal(BaseButton.SignalName.Pressed);
+            }
+
+            // Auto-click GameScreen.EndButton (after TitleScreen closes).
+            await ToSignal(GetTree().CreateTimer(0.2), SceneTreeTimer.SignalName.Timeout);
+            if (ScreenManager.Instance.Current is GameScreen gs)
+            {
+                GD.Print("[DemoBootstrap] Auto-click GameScreen.EndButton (exercises typed ShowAsync<TScreen,TArg,TResult>)");
+                gs.GetNode<Button>("Background/VBox/EndButton").EmitSignal(BaseButton.SignalName.Pressed);
+            }
+
+            // Wait for the demo to complete (both screens have closed).
+            await demoTask;
+        }
+        else
+        {
+            GD.PrintErr("[DemoBootstrap] ScreenManager autoload not found. Skipping ScreenManager demo.");
+        }
+
         // Let any deferred prints flush.
         await ToSignal(GetTree().CreateTimer(0.5), SceneTreeTimer.SignalName.Timeout);
         GD.Print("[DemoBootstrap] Demo complete. Quitting.");

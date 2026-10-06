@@ -3,7 +3,7 @@
 > A Godot 4 C# game framework — singleton container + typed UI panel stack.
 > Designed as a **git submodule** for Godot 4 game projects.
 
-**Status:** v0.4-alpha 🚧 (see [CHANGELOG.md](CHANGELOG.md) for what's done). Architecture in [`docs/design_v0.2.md`](docs/design_v0.2.md).
+**Status:** v0.5-alpha 🚧 (see [CHANGELOG.md](CHANGELOG.md) for what's done). Architecture in [`docs/design_v0.2.md`](docs/design_v0.2.md).
 
 **Author:** Johnni — Framework Engineer, MagicStudio (v0.1 / v0.2 design); Francisco — Framework Engineer, MagicStudio (v0.3 / v0.4 maintenance)
 **Target:** Godot 4.7+ / .NET 9 / C# 12+
@@ -13,12 +13,12 @@
 ## What this is
 
 A minimal, AOT-friendly game framework for Godot 4 C# projects, built from scratch
-(not a port of any Unity/Godot prior work). Three modules:
+(not a port of any Unity/Godot prior work). Four modules:
 
 1. **Singleton container** — type-safe service registry hosted by a Godot autoload.
    Supports both Node-based services (auto-registered on `_Ready`) and plain POCO services.
 
-2. **UI framework** — push/pop panel stack on a dedicated CanvasLayer, with
+2. **UI panel stack** — push/pop stack on a dedicated CanvasLayer, with
    three typed variants: `UIPanel`, `UIPanel<TOpenArg>`, `UIPanel<TOpenArg, TCloseArg>`.
    Awaitable push with typed open args and typed close results.
 
@@ -26,6 +26,13 @@ A minimal, AOT-friendly game framework for Godot 4 C# projects, built from scrat
    the autoload Node (auto-registered with the service registry); `EventDispatcher`
    is the pure POCO underneath it. Type-keyed, error-isolated, AOT-friendly
    (no reflection, no source generators).
+
+4. **Screen manager** (v0.5-alpha) — single-slot exclusive screen swap. One
+   `Screen` visible at a time; calling `ShowAsync` replaces the previous (no
+   stack). `ScreenManager` is the autoload Node; `ScreenRouter` is the pure
+   POCO underneath. Three typed variants: `Screen`, `Screen<TOpenArg>`,
+   `Screen<TOpenArg, TCloseResult>`. CanvasLayer @ layer 99 — sits below UI
+   panels (layer 100) so modal dialogs can overlay the active screen.
 
 **Explicitly out of scope** (v0.4+): state machines, resource loading,
 serialization, hot-reload, networking, tweener, panel cache, editor plugin.
@@ -39,30 +46,38 @@ godot-framework/
 ├── GodotFramework.csproj          # Library + sample (for our own smoke testing)
 ├── project.godot                  # Our test project's Godot config
 ├── src/
-│   └── GameFramework/             # LIBRARY CODE (10 .cs files, namespace GameFramework)
+│   └── GameFramework/             # LIBRARY CODE (15 .cs files, namespace GameFramework)
 │       ├── Game.cs                  # The autoload class (note: NOT GameFramework.cs; see below)
 │       ├── ServiceRegistry.cs
 │       ├── GameService.cs
 │       ├── UIManager.cs
-│       ├── UIPanelBase.cs
+│       ├── ManagedNodeBase.cs      # Internal base for UIPanel* + Screen* (renamed from UIPanelBase in v0.5-alpha)
 │       ├── UIPanel.cs
 │       ├── UIPanelT.cs
 │       ├── UIPanelT1T2.cs
 │       ├── EventDispatcher.cs      # POCO pub/sub (added v0.4-alpha)
-│       └── EventBus.cs             # Node wrapper autoload (added v0.4-alpha)
+│       ├── EventBus.cs             # Node wrapper autoload (added v0.4-alpha)
+│       ├── Screen.cs               # Single-slot screen base (added v0.5-alpha)
+│       ├── ScreenT.cs              # Screen<T> typed open (added v0.5-alpha)
+│       ├── ScreenT1T2.cs           # Screen<T1, T2> typed open + result (added v0.5-alpha)
+│       ├── ScreenRouter.cs         # POCO show/close state machine (added v0.5-alpha)
+│       └── ScreenManager.cs        # Node wrapper autoload (added v0.5-alpha)
 ├── samples/
-│   └── Demo/                      # SAMPLE: exercises every UIPanel variant + service resolution + EventBus
+│   └── Demo/                      # SAMPLE: exercises every UIPanel variant + service resolution + EventBus + ScreenManager
 │       ├── AudioService.cs
 │       ├── MainMenuPanel.cs
 │       ├── SettingsPanel.cs
 │       ├── ConfirmDialog.cs
 │       ├── EventBusDemo.cs         # Added v0.4-alpha (invoked by DemoBootstrap as Step 3)
+│       ├── TitleScreen.cs          # Added v0.5-alpha (non-typed Screen)
+│       ├── GameScreen.cs           # Added v0.5-alpha (Screen<string, string> with typed result)
+│       ├── ScreenManagerDemo.cs    # Added v0.5-alpha (invoked by DemoBootstrap as Step 4)
 │       └── DemoBootstrap.cs
 ├── scenes/
 │   └── demo.tscn                  # The main scene run by our test project
 ├── icon.svg
 ├── README.md
-├── CHANGELOG.md                   # Version history (v0.1 / v0.2 / v0.3 / v0.4-alpha)
+├── CHANGELOG.md                   # Version history (v0.1 / v0.2 / v0.3 / v0.4-alpha / v0.5-alpha)
 ├── docs/
 │   └── design_v0.2.md             # Architecture + lessons learned (see §11 for v0.3 roadmap)
 ├── LICENSE

@@ -7,7 +7,7 @@ namespace GameFramework;
 /// Panel with no open arguments and no close result. Use for stateless screens
 /// that don't need to communicate anything back to the caller.
 /// </summary>
-public abstract partial class UIPanel : UIPanelBase
+public abstract partial class UIPanel : ManagedNodeBase
 {
     private TaskCompletionSource? _tcs;
 
