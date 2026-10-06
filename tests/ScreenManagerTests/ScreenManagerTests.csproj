@@ -1,0 +1,30 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <!--
+      ScreenManager test project. Uses Godot.NET.Sdk so it picks up
+      GodotSharp.dll transitively from the framework ProjectReference.
+      xUnit + Microsoft.NET.Test.Sdk drive the standard dotnet test
+      runner.
+
+      Tests target ScreenManager via reflection only (no runtime
+      instantiation, since Screen is a Godot Control and `new Screen()`
+      would call into native bindings unavailable under plain dotnet
+      test). Runtime lifecycle tests (ShowAsync behavior) are deferred
+      to a future godot-headless test runner (see the same
+      constraint as Phase 0's GameServiceContractTests.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Godot.NET.Sdk" Version="4.7.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\GodotFramework.csproj" />
+  </ItemGroup>
+</Project>
