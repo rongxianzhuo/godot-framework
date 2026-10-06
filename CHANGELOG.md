@@ -8,6 +8,125 @@ changes.
 
 ---
 
+## [v0.5-alpha] - 2026-10-07
+
+> Phase 1 W3 — ScreenManager subsystem + internal `UIPanelBase` rename.
+> Released for Match3 `SwapScreen` → `ScreenManager.Instance.ShowAsync<T>()`
+> migration (W3 Day 4-5). 4 W3 commits stacked on `feature/screenmanager`
+> branch.
+>
+> **Build baseline**: continues v0.3 / v0.4-alpha's Godot.NET.Sdk 4.7.2 +
+> .NET 9 + C# 12. **No SDK upgrade** this release.
+
+### Changed
+
+- **Internal**: `UIPanelBase` → `ManagedNodeBase` class rename. Public
+  API (`UIPanel` / `UIPanel<T>` / `UIPanel<T1,T2>` / `Screen` / `Screen<T>`
+  / `Screen<T1,T2>`) unchanged. Consumers not affected unless they
+  directly subclassed `UIPanelBase` (rare — the doc comments always told
+  users to subclass `UIPanel` / `UIPanel<T>` / `UIPanel<T1,T2>` instead).
+  Both `UIPanel` and `Screen` hierarchies now share `ManagedNodeBase` as
+  their internal base — the shared machinery (`IsTopOfStack`,
+  `BindInput` helpers, abstract `InvokeOnClose` + `GetCloseTask`) was
+  duplicated-as-`UIPanelBase` only; now lives on `ManagedNodeBase` for
+  both. `InvokeOnOpen` is virtual on the new base with a defensive
+  `NotSupportedException` default; only `UIPanel` variants override it
+  (`Screen` variants use their own `InvokeOnShow` declared on `Screen`).
+
+### Added
+
+- **`ScreenManager` : `GameService`** (`src/GameFramework/ScreenManager.cs`,
+  ~120 LOC): thin Node wrapper (autoload). `Instance` static + `Current`
+  property + `IsShowing` + `ScreenShown` / `ScreenClosed` events + 3
+  `ShowAsync` overloads (no-arg / typed open / typed open + typed
+  result). CanvasLayer @ layer 99 — sits below UI panels (layer 100) so
+  modal dialogs can overlay the active screen. Force-cleanup on
+  `_ExitTree`. POCO split: state machine lives in
+  `ScreenRouter` (next bullet) — wrapper just owns the Godot scene-tree
+  attachment.
+
+- **`ScreenRouter` POCO** (`src/GameFramework/ScreenRouter.cs`, ~150 LOC):
+  show/close state machine. No Godot imports — 4 constructor seams
+  (`Func<Type, Screen> screenFactory` / `Action<Screen> attach` /
+  `Action<Screen> detach` / `Action<string>? errorLogger`) let the
+  manager inject AddChild/RemoveChild + GD.PrintErr while tests inject
+  factory + no-op attach/detach + capturing logger. Mirrors the
+  `EventDispatcher` POCO + `EventBus` Node-wrapper split.
+
+- **`Screen` / `Screen<TOpenArg>` / `Screen<TOpenArg, TCloseResult>`**
+  (`src/GameFramework/Screen.cs` + `ScreenT.cs` + `ScreenT1T2.cs`):
+  abstract base classes extending `ManagedNodeBase`. Sibling inheritance
+  (each variant declares its own typed `OnShow` / `OnClose` virtuals,
+  mirroring the `UIPanel` family pattern). `Screen<T1,T2>.CloseScreen(result)`
+  sets the typed `TaskCompletionSource<TCloseResult>` + propagates
+  `result` to the typed `ShowAsync<Task<TCloseResult>>` awaiter.
+
+- **`ScreenManagerDemo` sample** (`samples/Demo/TitleScreen.cs` +
+  `GameScreen.cs` + `ScreenManagerDemo.cs`, integrated into
+  `DemoBootstrap.cs` Step 4 + `project.godot` autoload): exercises
+  non-typed `ShowAsync<TitleScreen>()` + typed
+  `ShowAsync<GameScreen, string, string>('world1')` returning
+  `'score:100'`. The smoke test now prints `[DemoBootstrap] Step 4:
+  ScreenManager demo` + the demo output (incl. `OnShow` / `OnClose`
+  lifecycle calls on each screen) after the existing UI flow.
+
+- **`ScreenManagerTests` xUnit project** (`tests/ScreenManagerTests/`):
+  **30 tests** (30 passed + 0 skipped, ~85ms under `dotnet test`).
+  Three fixtures:
+  - `ScreenManagerContractTests.cs` (12): structural — `ScreenManager`
+    sealed / `GameService` subclass / `Instance` static with private
+    setter / `Current` read-only / 3 `ShowAsync` overloads (1/2/3 generic
+    args matching §4 draft) / `Screen` abstract `: ManagedNodeBase` /
+    `Screen<T>` + `Screen<T1,T2>` abstract + sibling inheritance /
+    `CloseScreen` overloads / private `_router` field.
+  - `ScreenManagerLifecycleTests.cs` (8): IL-shape reflection —
+    `_Ready` / `_ExitTree` are public void no-args overrides rooted at
+    `Godot.Node`, calls `GameService._Ready()` / `GameService._ExitTree()`
+    / `set_Instance` for singleton registration + cleanup.
+  - `ScreenRouterTests.cs` (10): POCO behavior — 3 initial-state, 5
+    Mark-runtime (default screen invokes OnShow / typed open passes arg
+    / typed close result propagates / sequential lifecycle / throw on
+    overlapping ShowAsync), ScreenShown/ScreenClosed events,
+    error-logger seam captures OnShow throws. Uses
+    `FormatterServices.GetUninitializedObject` to create test Screen
+    instances without invoking the `Control` base ctor (which would
+    call Godot native bindings unavailable under plain `dotnet test`).
+
+- **`project.godot` autoload**: adds `ScreenManager="*res://src/GameFramework/ScreenManager.cs"`
+  (4th autoload entry after `GameFramework` / `UIManager` / `EventBus`).
+  Autoload order: `GameFramework` first (so `Game.Instance` exists when
+  the others' `_Ready` runs); the other three can be in any order.
+
+### Fixed
+
+- **Day-1 (`00f69b4`) latent bug — `OnClose` never fired on user screens.**
+  `ScreenManager.ShowInternalAsync` finally block did NOT invoke
+  `InvokeOnClose` before detaching (only `UIPanelManager.FinalizePop`
+  did). This was caught by Day-2's `ScreenRouterTests.OnCloseCalled`
+  assertion. Day-2 commit `1dabb9b` fixed by adding
+  `try { screen.InvokeOnClose(null); } catch …` in `ScreenRouter`'s
+  finally block (matches `UIPanel.FinalizePop` pattern). Verified in
+  Day-3 smoke output: `[TitleScreen] OnClose` and
+  `[GameScreen] OnClose(result='score:100')` both fire.
+
+### Documentation
+
+- **`README.md`**: Status bumped to `v0.5-alpha 🚧`. "What this is"
+  adds the ScreenManager module (4th). Repository layout 10 → 15
+  `.cs` files (UIPanelBase → ManagedNodeBase + Screen + Screen<T> +
+  Screen<T1,T2> + ScreenRouter + ScreenManager).
+- **`FORK_CHECKLIST.md`**: Last verified bumped to `7e30ebd`. Stable
+  fields adds `ScreenManager` autoload. Volatile fields adds
+  `ScreenRouter` + `Screen` public types + `ScreenManagerTests` row.
+  New §"Using ScreenManager (since v0.5-alpha)" with 3-step consumer
+  integration + ScreenManager internal-fields table (mirror of the
+  EventBus section).
+- **`tests/README.md`**: Layout updated with `ScreenManagerTests` row.
+  Total bumped 51 → 81 tests. New fixture sections for the 3 ScreenManager
+  test classes.
+
+---
+
 ## [v0.4-alpha] - 2026-10-06
 
 > Phase 1 W2 — EventBus subsystem (the first framework feature

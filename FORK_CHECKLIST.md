@@ -5,7 +5,7 @@ upgrades** and need to be re-verified (or updated) by consumer repos that
 have this framework as a git submodule. Use it as a pre-flight / post-sync
 checklist whenever you bump the framework's submodule HEAD.
 
-Last verified against: `8c81bdd` (v0.4-alpha, on branch `feature/eventbus`).
+Last verified against: `7e30ebd` (v0.5-alpha, on branch `feature/screenmanager`).
 
 ---
 
@@ -28,8 +28,8 @@ consumers can verify them after a sync.
 | `<EnableDynamicLoading>` | `true` | `GodotFramework.csproj` | Hot-swap DLL loading for dev iteration. |
 | Compile whitelist | `src/GameFramework/**/*.cs` + `samples/Demo/**/*.cs` | `GodotFramework.csproj` (two `<Compile Include>` lines) | Anything else in framework repo (e.g., `tests/`, future `tools/`) is **excluded** from the framework assembly. |
 | Autoload class name | `Game` (NOT `GameFramework`) | `src/GameFramework/Game.cs` | See README §"Avoiding Common Pitfalls" §2 — namespace and class can't share a name (CS0234). The **autoload NODE name** in `project.godot` is `GameFramework` — that's just a Godot-side identifier. |
-| Autoload class names (additional) | `UIManager`, `EventBus` | `src/GameFramework/UIManager.cs`, `src/GameFramework/EventBus.cs` | Added in v0.3 (UIManager) and v0.4-alpha (EventBus). Both are `GameService` subclasses. Their corresponding autoload NODE names are `UIManager` and `EventBus` in `project.godot`. |
-| EventDispatcher public types | `EventDispatcher`, `EventBus` | `src/GameFramework/EventDispatcher.cs`, `src/GameFramework/EventBus.cs` | Added v0.4-alpha. `EventDispatcher` is a pure POCO; `EventBus` is the Node wrapper that owns the static `Instance` pointer. |
+| Autoload class names (additional) | `UIManager`, `EventBus`, `ScreenManager` | `src/GameFramework/UIManager.cs`, `src/GameFramework/EventBus.cs`, `src/GameFramework/ScreenManager.cs` | Added in v0.3 (UIManager), v0.4-alpha (EventBus), and v0.5-alpha (ScreenManager). All three are `GameService` subclasses. Their corresponding autoload NODE names are `UIManager`, `EventBus`, and `ScreenManager` in `project.godot`. |
+| EventDispatcher public types | `EventDispatcher`, `EventBus`, `ScreenRouter`, `ScreenManager`, `Screen` / `Screen<T>` / `Screen<T1,T2>` | `src/GameFramework/EventDispatcher.cs`, `src/GameFramework/EventBus.cs`, `src/GameFramework/ScreenRouter.cs`, `src/GameFramework/ScreenManager.cs`, `src/GameFramework/Screen.cs` + `ScreenT.cs` + `ScreenT1T2.cs` | Added v0.4-alpha (EventDispatcher/EventBus) and v0.5-alpha (ScreenRouter/ScreenManager/Screen variants). Both POCO + Node-wrapper pairs follow the same split pattern: a pure POCO (`EventDispatcher`, `ScreenRouter`) + a Node wrapper (`EventBus`, `ScreenManager`) that owns the static `Instance` pointer. The 3 Screen variants mirror the 3 UIPanel variants (no-arg / typed open / typed open + result). |
 
 ## Volatile framework-side fields
 
@@ -38,10 +38,10 @@ framework repo on every sync and check for impact.
 
 | Field | Range / pattern | Notes |
 |---|---|---|
-| Public API surface | 10 .cs files in `src/GameFramework/` (namespace `GameFramework`) | Public types + methods: `ServiceRegistry`, `GameService`, `Game`, `UIManager`, `UIPanel*`, `EventBus`, `EventDispatcher`. Check `git diff` for added / removed / renamed. |
+| Public API surface | 15 .cs files in `src/GameFramework/` (namespace `GameFramework`) | Public types + methods: `ServiceRegistry`, `GameService`, `Game`, `UIManager`, `ManagedNodeBase` (internal), `UIPanel*`, `EventBus`, `EventDispatcher`, `ScreenManager`, `ScreenRouter`, `Screen*`. Check `git diff` for added / removed / renamed. |
 | Subfolder layout | `src/GameFramework/` (library) + `samples/Demo/` (sample consumer) | `samples/` is for framework's own smoke test, **not** meant to ship in consumer builds. |
-| Tests subfolder | `tests/ServiceFrameworkTests/` (v0.3-prep) + `tests/EventBusTests/` (v0.4-alpha) | xUnit POCO tests. Not compiled into framework assembly. May grow. Total now 51 tests (50 passed + 1 skipped) — see `tests/README.md`. |
-| `samples/Demo/` content | Mirrors new framework features | Updated alongside library additions. `EventBusDemo.cs` added v0.4-alpha (invoked from `DemoBootstrap.cs` Step 3). |
+| Tests subfolder | `tests/ServiceFrameworkTests/` (v0.3-prep) + `tests/EventBusTests/` (v0.4-alpha) + `tests/ScreenManagerTests/` (v0.5-alpha) | xUnit POCO tests. Not compiled into framework assembly. May grow. Total now **81 tests** (80 passed + 1 skipped) — see `tests/README.md`. |
+| `samples/Demo/` content | Mirrors new framework features | Updated alongside library additions. `EventBusDemo.cs` added v0.4-alpha (invoked from `DemoBootstrap.cs` Step 3). v0.5-alpha adds `TitleScreen.cs` + `GameScreen.cs` + `ScreenManagerDemo.cs` (invoked from Step 4). |
 
 ## Consumer-side actions required on framework upgrade
 
@@ -186,6 +186,89 @@ implementation details, not as stable API:
 | `EventDispatcher._errorLogger` | `Action<string>` | `private readonly` | Injected error logger (defaults to `GD.PrintErr`). Construct with `_ => { }` for silent logging in tests. |
 | `EventBus._dispatcher` | `EventDispatcher` | `private readonly` | Composition — the `EventBus` Node delegates Publish/Subscribe to this. |
 | `EventBus.Instance` | `EventBus` (static property) | `public get, private set` | Set in `_Ready`, cleared in `_ExitTree` (only if `Instance == this` to avoid clobbering a successor autoload). |
+
+## Using ScreenManager (since v0.5-alpha)
+
+ScreenManager is **opt-in**. Your consumer repo doesn't need to change
+anything if you don't use it. If you do, three small additions:
+
+### 1. Add the `ScreenManager` autoload to your `project.godot`
+
+```ini
+[autoload]
+
+GameFramework="*res://addons/godot-framework/src/GameFramework/Game.cs"
+UIManager="*res://addons/godot-framework/src/GameFramework/UIManager.cs"
+EventBus="*res://addons/godot-framework/src/GameFramework/EventBus.cs"
+ScreenManager="*res://addons/godot-framework/src/GameFramework/ScreenManager.cs"
+```
+
+Autoload order: `GameFramework` first (so `Game.Instance` exists when the
+others' `_Ready` runs). The other three can be in any order among themselves.
+
+### 2. Define your screens + show them
+
+```csharp
+// Non-typed screen (no open arg, no close result):
+public sealed partial class TitleScreen : Screen
+{
+    protected override void OnShow() { /* setup */ }
+    protected override void OnClose() { /* teardown */ }
+
+    // Button click handler:
+    private void OnPlayPressed() => CloseScreen();
+}
+
+// Typed-open + typed-result screen:
+public sealed partial class GameScreen : Screen<string, string>
+{
+    protected override void OnShow(string level) { /* setup with arg */ }
+    protected override void OnClose(string result) { /* teardown with result */ }
+
+    // Button click handler:
+    private void OnEndPressed() => CloseScreen("score:100");
+}
+
+// Caller:
+await ScreenManager.Instance.ShowAsync<TitleScreen>();
+var score = await ScreenManager.Instance.ShowAsync<GameScreen, string, string>("world1");
+```
+
+Only one `Screen` is visible at a time. Calling `ShowAsync` while another
+screen is active throws `InvalidOperationException` — close the current
+screen first (await its `ShowAsync` task).
+
+### 3. (Optional) Use `ScreenRouter` directly for non-Node contexts
+
+`ScreenRouter` is a pure POCO (not a `Node`). Use it for tooling,
+unit tests, or any context where a full Godot lifecycle is overkill:
+
+```csharp
+var router = new ScreenRouter(
+    screenFactory: t => (Screen)Activator.CreateInstance(t)!,
+    attach: screen => container.AddChild(screen),
+    detach: screen => container.RemoveChild(screen)
+);
+await router.ShowAsync<MyScreen>();
+```
+
+The 4 constructor seams (`screenFactory` / `attach` / `detach` /
+`errorLogger`) let you swap in no-op attach/detach + silent logger for
+tests — see `tests/ScreenManagerTests/ScreenRouterTests.cs`.
+
+### ScreenManager internal fields (may change between versions)
+
+Listed here for visibility — consumers should treat these as private
+implementation details, not as stable API:
+
+| Field | Type | Visibility | Notes |
+|---|---|---|---|
+| `ScreenRouter._screenFactory` | `Func<Type, Screen>` | `private readonly` | Injected screen factory. Default `Activator.CreateInstance`. Override to inject pre-created Screen instances in tests (via `FormatterServices.GetUninitializedObject`). |
+| `ScreenRouter._attach` / `ScreenRouter._detach` | `Action<Screen>` (each) | `private readonly` | Injected attach/detach callbacks. ScreenManager wires them to `AddChild`/`RemoveChild`; tests inject no-op stubs. |
+| `ScreenRouter._errorLogger` | `Action<string>` | `private readonly` | Injected error logger (defaults to `Console.Error.WriteLine`). ScreenManager wires it to `GD.PrintErr`. Pass `_ => { }` for silent in tests. |
+| `ScreenManager._router` | `ScreenRouter` | `private readonly` | Composition — the `ScreenManager` Node delegates Show/ShowAsync to this. |
+| `ScreenManager.Instance` | `ScreenManager` (static property) | `public get, private set` | Set in `_Ready`, cleared in `_ExitTree` (only if `Instance == this` to avoid clobbering a successor autoload). |
+| `ScreenManager._screenLayer` / `_screenContainer` | `CanvasLayer` / `Control` | `private` | Built lazily in `_Ready`. Screen layer @ 99, container full-rect with `MouseFilter.Stop`. |
 
 ## Submodule HEAD tracking policy
 
